@@ -1,18 +1,22 @@
-import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  CalendarClock,
   ChevronRight,
   Filter,
   Images,
   LayoutDashboard,
+  ListTodo,
   LogOut,
 } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
 import { useAuth } from '../navigation/AuthContext';
+import {
+  fetchDashboard,
+  type DashboardStats,
+} from '../services/dashboardService';
 import type {
   AppStackParamList,
   MainStackParamList,
@@ -23,6 +27,8 @@ interface Item {
   label: string;
   hint: string;
   Icon: React.ComponentType<{ size?: number; color?: string }>;
+  /** Which `GET /dashboard` counter to show beside this item, if any. */
+  metric?: keyof DashboardStats;
 }
 
 const ITEMS: Item[] = [
@@ -37,18 +43,21 @@ const ITEMS: Item[] = [
     label: 'Leads Requests',
     hint: 'Filter & qualify leads',
     Icon: Filter,
+    metric: 'requests',
   },
   {
-    screen: 'FollowUps',
-    label: 'Follow-ups',
-    hint: 'Due, overdue & upcoming',
-    Icon: CalendarClock,
+    screen: 'Tasks',
+    label: 'Tasks',
+    hint: 'Open & completed items',
+    Icon: ListTodo,
+    metric: 'tasks',
   },
   {
     screen: 'CompanyMedia',
     label: 'Company Media',
     hint: 'Images, videos & PDFs',
     Icon: Images,
+    metric: 'companies',
   },
 ];
 
@@ -59,10 +68,25 @@ interface Props {
 
 export function DrawerContent({ active, onSignOut }: Props) {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { close } = useDrawer();
+  const { user, refreshProfile, isRefreshingProfile } = useAuth();
+  const { close, isOpen } = useDrawer();
   const navigation =
     useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+
+  // Re-read the profile from GET /auth/me and the counters from
+  // GET /dashboard each time the drawer opens, so nothing here is stale.
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    void refreshProfile();
+    fetchDashboard()
+      .then(setStats)
+      .catch(() => {
+        // Leave the last known counts on screen.
+      });
+  }, [isOpen, refreshProfile]);
 
   const goTo = (screen: keyof MainStackParamList) => {
     navigation.navigate('Main', { screen });
@@ -95,7 +119,12 @@ export function DrawerContent({ active, onSignOut }: Props) {
           style={{ width: 190, height: 190, top: -90, right: -60 }}
         />
 
-        <View className="px-5">
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => void refreshProfile()}
+          className="px-5"
+          accessibilityRole="button"
+          accessibilityLabel="Refresh profile">
           <View className="flex-row items-center gap-3">
             <View
               className="w-12 h-12 rounded-full items-center justify-center"
@@ -115,11 +144,16 @@ export function DrawerContent({ active, onSignOut }: Props) {
                 numberOfLines={1}>
                 {user?.name ?? 'Franchise Employee'}
               </Text>
-              <Text
-                className="font-lato text-xs text-primary-300 mt-0.5"
-                numberOfLines={1}>
-                {user?.role ?? 'Franchise Employee'}
-              </Text>
+              <View className="flex-row items-center gap-2 mt-0.5">
+                <Text
+                  className="font-lato text-xs text-primary-300 flex-1"
+                  numberOfLines={1}>
+                  {user?.position ?? 'Franchise Employee'}
+                </Text>
+                {isRefreshingProfile ? (
+                  <ActivityIndicator size="small" color="#A4C9FF" />
+                ) : null}
+              </View>
             </View>
           </View>
 
@@ -130,7 +164,14 @@ export function DrawerContent({ active, onSignOut }: Props) {
               {user.email}
             </Text>
           ) : null}
-        </View>
+          {user?.contact ? (
+            <Text
+              className="font-lato text-[11px] text-primary-400 mt-1"
+              numberOfLines={1}>
+              {user.contact}
+            </Text>
+          ) : null}
+        </TouchableOpacity>
       </View>
 
       {/* ------------------------------ Items ----------------------------- */}
@@ -145,6 +186,7 @@ export function DrawerContent({ active, onSignOut }: Props) {
           const discClass = isActive ? 'bg-white' : 'bg-neutral-200';
           const iconColor = isActive ? '#5279AC' : '#8990A8';
           const labelClass = isActive ? 'text-primary-800' : 'text-neutral-900';
+          const count = item.metric && stats ? stats[item.metric] : undefined;
 
           return (
             <TouchableOpacity
@@ -154,7 +196,9 @@ export function DrawerContent({ active, onSignOut }: Props) {
               className={`flex-row items-center gap-3 rounded-2xl px-2 py-2.5 mb-1 ${rowClass}`}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
-              accessibilityLabel={item.label}>
+              accessibilityLabel={
+                count === undefined ? item.label : `${item.label}, ${count}`
+              }>
               <View
                 className={`w-9 h-9 rounded-xl ${discClass} items-center justify-center`}>
                 <item.Icon size={17} color={iconColor} />
@@ -168,6 +212,20 @@ export function DrawerContent({ active, onSignOut }: Props) {
                   {item.hint}
                 </Text>
               </View>
+
+              {count === undefined ? null : (
+                <View
+                  className={`rounded-full px-2.5 py-1 ${
+                    isActive ? 'bg-white' : 'bg-neutral-200'
+                  }`}>
+                  <Text
+                    className={`font-lato-bold text-[11px] ${
+                      isActive ? 'text-primary-800' : 'text-neutral-700'
+                    }`}>
+                    {count}
+                  </Text>
+                </View>
+              )}
 
               {isActive ? (
                 <View className="w-1.5 h-1.5 rounded-full bg-primary-700" />

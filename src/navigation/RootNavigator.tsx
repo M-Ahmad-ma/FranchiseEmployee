@@ -22,7 +22,7 @@ const linking: LinkingOptions<AppStackParamList> = {
         screens: {
           Home: '',
           Requests: 'requests',
-          FollowUps: 'follow-ups',
+          Tasks: 'tasks',
           CompanyMedia: 'company-media',
         },
       },

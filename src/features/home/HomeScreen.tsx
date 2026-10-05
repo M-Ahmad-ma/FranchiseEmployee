@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -7,28 +7,29 @@ import {
   View,
 } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  CalendarClock,
   ChevronRight,
   Filter,
   Images,
   Inbox,
+  ListTodo,
   RefreshCw,
 } from 'lucide-react-native';
 import type { RootStackParamList } from '../../navigation/types';
+import { useAuth } from '../../navigation/AuthContext';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { Card, cardShadow } from '../../shared/components/Card';
 import {
-  fetchFollowUps,
-  type FollowUpRow,
-} from '../../services/followUpsService';
+  fetchDashboard,
+  type DashboardStats,
+} from '../../services/dashboardService';
 import {
-  fetchRequests,
-  type LeadRequestRow,
-} from '../../services/requestsService';
-import { COMPANY_OPTIONS } from '../../services/options';
+  fetchTasks,
+  type TaskRow,
+  type TaskState,
+} from '../../services/tasksService';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -103,11 +104,20 @@ function greetingFor(date: Date) {
   return 'Good evening';
 }
 
-const statusClass: Record<FollowUpRow['status'], string> = {
-  Due: 'bg-secondary-200 text-secondary-700',
-  Overdue: 'bg-neutral-200 text-red-500',
-  Upcoming: 'bg-primary-200 text-primary-700',
-  Done: 'bg-[#BEFFDB] text-[#00A572]',
+function initialsFor(name?: string) {
+  return (
+    (name ?? '')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part.charAt(0).toUpperCase())
+      .join('') || 'FE'
+  );
+}
+
+const taskStateClass: Record<TaskState, string> = {
+  open: 'bg-secondary-200 text-secondary-700',
+  completed: 'bg-[#BEFFDB] text-[#00A572]',
 };
 
 /* -------------------------------------------------------------------------- */
@@ -131,10 +141,10 @@ const SHORTCUTS: Shortcut[] = [
     disc: 'bg-primary-200',
   },
   {
-    screen: 'FollowUps',
-    title: 'Follow-ups',
-    subtitle: 'Due, overdue & upcoming',
-    icon: <CalendarClock size={18} color="#0081A7" />,
+    screen: 'Tasks',
+    title: 'Tasks',
+    subtitle: 'Open & completed items',
+    icon: <ListTodo size={18} color="#0081A7" />,
     disc: 'bg-tertiary-200',
   },
   {
@@ -153,11 +163,12 @@ const SHORTCUTS: Shortcut[] = [
 export function HomeScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { user } = useAuth();
 
   const now = new Date();
 
-  const [followUps, setFollowUps] = useState<FollowUpRow[]>([]);
-  const [requests, setRequests] = useState<LeadRequestRow[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [openTasks, setOpenTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,12 +176,12 @@ export function HomeScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [dueRows, requestRows] = await Promise.all([
-        fetchFollowUps('active'),
-        fetchRequests({}),
+      const [dash, tasks] = await Promise.all([
+        fetchDashboard(),
+        fetchTasks(0),
       ]);
-      setFollowUps(dueRows);
-      setRequests(requestRows);
+      setStats(dash);
+      setOpenTasks(tasks);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -178,18 +189,22 @@ export function HomeScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Re-fetch whenever the screen regains focus, so counts and the task preview
+  // are never left showing what was true when it was first mounted.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
-  const preview = followUps.slice(0, 3);
+  const preview = openTasks.slice(0, 3);
 
-  const metrics: { label: string; value: number | null; dot: string }[] = [
-    { label: 'Due', value: followUps.length, dot: 'bg-secondary-500' },
-    { label: 'Requests', value: requests.length, dot: 'bg-primary-700' },
+  const metrics: { label: string; value: number; dot: string }[] = [
+    { label: 'Tasks', value: stats?.tasks ?? 0, dot: 'bg-secondary-500' },
+    { label: 'Requests', value: stats?.requests ?? 0, dot: 'bg-primary-700' },
     {
       label: 'Companies',
-      value: COMPANY_OPTIONS.length,
+      value: stats?.companies ?? 0,
       dot: 'bg-tertiary-600',
     },
   ];
@@ -198,8 +213,9 @@ export function HomeScreen() {
     <DashboardLayout
       title="Home"
       subtitle="Your franchise workspace at a glance"
-      showBack={false}
-      showMenu>
+      showMenu
+      onRefresh={load}
+      refreshing={loading}>
       {/* ------------------------------ Hero ------------------------------ */}
       <Card
         className="bg-primary-900 rounded-3xl overflow-hidden mb-5"
@@ -221,16 +237,27 @@ export function HomeScreen() {
             <View
               className="w-11 h-11 rounded-full items-center justify-center"
               style={s.avatar}>
-              <Text className="font-lato-black text-sm text-white">FE</Text>
+              <Text className="font-lato-black text-sm text-white">
+                {initialsFor(user?.name)}
+              </Text>
             </View>
           </View>
 
           <Text className="font-lato-black text-3xl text-white mt-5">
             {greetingFor(now)}
           </Text>
-          <Text className="font-lato text-sm text-primary-300 mt-1">
-            Franchise Employee
+          <Text
+            className="font-lato text-sm text-primary-300 mt-1"
+            numberOfLines={1}>
+            {user?.name ?? 'Franchise Employee'}
           </Text>
+          {user?.position ? (
+            <Text
+              className="font-lato text-xs text-primary-400 mt-0.5"
+              numberOfLines={1}>
+              {user.position}
+            </Text>
+          ) : null}
 
           <View className="flex-row items-center mt-5 pt-4" style={s.heroRule}>
             <Text className="font-lato text-xs text-primary-200">
@@ -258,7 +285,7 @@ export function HomeScreen() {
             <View className="flex-1 items-center px-1">
               <View className={`w-1.5 h-1.5 rounded-full ${metric.dot} mb-2`} />
               <Text className="font-lato-black text-2xl text-neutral-900">
-                {metric.value === null || loading ? '—' : String(metric.value)}
+                {loading ? '—' : String(metric.value)}
               </Text>
               <Text className="font-lato-bold text-[10px] uppercase tracking-[1px] text-neutral-600 mt-1 text-center">
                 {metric.label}
@@ -303,17 +330,18 @@ export function HomeScreen() {
         ))}
       </View>
 
+      {/* --------------------------- Open tasks --------------------------- */}
       <View className="flex-row items-center justify-between mb-3 px-1">
         <Text className="font-lato-black text-lg text-neutral-900">
-          Needs your attention
+          Open tasks
         </Text>
         {preview.length > 0 && (
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('FollowUps')}
+            onPress={() => navigation.navigate('Tasks')}
             className="flex-row items-center gap-0.5"
             accessibilityRole="button"
-            accessibilityLabel="View all follow-ups">
+            accessibilityLabel="View all tasks">
             <Text className="font-lato-bold text-xs text-primary-700">
               View all
             </Text>
@@ -353,47 +381,43 @@ export function HomeScreen() {
               You&apos;re all caught up
             </Text>
             <Text className="font-lato text-xs text-neutral-600 text-center mt-1.5 leading-5">
-              No follow-ups are due or overdue right now. Anything that needs
-              you will land here first.
+              No open tasks right now. Anything assigned to you will land here
+              first.
             </Text>
           </View>
         ) : (
-          preview.map((row, index) => (
+          preview.map((task, index) => (
             <TouchableOpacity
-              key={row.id}
+              key={task.id || index}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('FollowUps')}
+              onPress={() => navigation.navigate('Tasks')}
               className="px-4 py-3.5 flex-row items-center gap-3"
               style={index > 0 ? s.rowDivider : undefined}
               accessibilityRole="button"
-              accessibilityLabel={`Follow up with ${row.lead}, ${row.status}`}>
-              <View className="items-center w-12">
-                <Text className="font-lato-black text-sm text-neutral-900">
-                  {row.time}
-                </Text>
-                <Text className="font-lato text-[10px] uppercase tracking-[1px] text-neutral-500 mt-0.5">
-                  {row.date}
-                </Text>
+              accessibilityLabel={`Open task ${task.title}`}>
+              <View className="w-8 h-8 rounded-full bg-primary-200 items-center justify-center">
+                <ListTodo size={14} color="#5279AC" />
               </View>
-
-              <View className="w-px self-stretch bg-neutral-200" />
 
               <View className="flex-1">
                 <Text
                   className="font-lato-bold text-sm text-neutral-900"
                   numberOfLines={1}>
-                  {row.lead}
+                  {task.title || 'Untitled task'}
                 </Text>
                 <Text
                   className="font-lato text-xs text-neutral-700 mt-0.5"
                   numberOfLines={1}>
-                  {row.comment || row.phone}
+                  {[task.assignedTo, task.date].filter(Boolean).join(' · ') ||
+                    'Unassigned'}
                 </Text>
               </View>
 
               <View
-                className={`rounded-full px-3 py-1 ${statusClass[row.status]}`}>
-                <Text className="font-lato-bold text-[11px]">{row.status}</Text>
+                className={`rounded-full px-3 py-1 ${taskStateClass[task.state]}`}>
+                <Text className="font-lato-bold text-[11px]">
+                  {task.state === 'open' ? 'Open' : 'Completed'}
+                </Text>
               </View>
             </TouchableOpacity>
           ))

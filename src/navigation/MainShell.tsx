@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext';
 import type { MainStackParamList } from './types';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
-import { FollowUpsScreen } from '../features/followUps/FollowUpsScreen';
+import { TasksScreen } from '../features/tasks/TasksScreen';
 import { CompanyMediaScreen } from '../features/companyMedia/CompanyMediaScreen';
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -47,7 +47,7 @@ export function MainShell() {
         screenListeners={screenListeners}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Requests" component={RequestsScreen} />
-        <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
+        <Stack.Screen name="Tasks" component={TasksScreen} />
         <Stack.Screen name="CompanyMedia" component={CompanyMediaScreen} />
       </Stack.Navigator>
     </AppDrawer>

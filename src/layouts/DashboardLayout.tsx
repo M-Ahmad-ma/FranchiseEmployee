@@ -2,6 +2,7 @@ import React from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   Text,
@@ -9,9 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ArrowLeft, Menu } from 'lucide-react-native';
+import { Menu } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
 
 const circleButton =
@@ -20,23 +19,24 @@ const circleButton =
 interface Props {
   title: string;
   subtitle?: string;
-  showBack?: boolean;
-  /** Shows a button that opens the app drawer, ahead of the back arrow. */
+  /** Shows a button that opens the app drawer. */
   showMenu?: boolean;
+  /** Enables pull-to-refresh; usually the screen's own `load`. */
+  onRefresh?: () => void;
+  refreshing?: boolean;
   children: React.ReactNode;
 }
 
 export function DashboardLayout({
   title,
   subtitle,
-  showBack = true,
   showMenu = false,
+  onRefresh,
+  refreshing = false,
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { open } = useDrawer();
-  const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
-  const canGoBack = showBack && navigation.canGoBack();
 
   return (
     <View className="flex-1 bg-light" style={{ paddingTop: insets.top }}>
@@ -47,7 +47,18 @@ export function DashboardLayout({
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 40 }}>
+          contentContainerStyle={{ paddingBottom: 40 }}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#5279AC"
+                colors={['#5279AC']}
+                progressBackgroundColor="#FFFFFF"
+              />
+            ) : undefined
+          }>
           <View className="px-4 pt-4">
             <View className="flex-row items-center gap-3">
               {showMenu && (

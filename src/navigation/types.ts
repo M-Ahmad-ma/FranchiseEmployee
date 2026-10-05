@@ -4,7 +4,7 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 export type RootStackParamList = {
   Home: undefined;
   Requests: undefined;
-  FollowUps: undefined;
+  Tasks: undefined;
   CompanyMedia: undefined;
 };
 

@@ -3,9 +3,13 @@ import { Option } from './utils';
 /**
  * Reference data for dropdowns.
  *
- * These are static options so the UI is usable without a backend.
- * When the API is ready, replace each array with a fetch to
- * `${API_BASE_URL}/...` (see src/config).
+ * These are fallbacks: the screens derive their filter options from the rows
+ * the API actually returned, and only fall back to these lists while loading
+ * or when a result set is empty.
+ *
+ * Companies are no longer listed here — they come from
+ * `GET /api/team/companies`. Media types stay static because the Team API
+ * exposes no media endpoint.
  */
 export const CITY_OPTIONS: Option[] = [
   { label: 'Lahore', value: 'lahore' },
@@ -45,13 +49,6 @@ export const PIPELINE_STATUS_OPTIONS: Option[] = [
   { label: 'Qualified', value: 'qualified' },
   { label: 'Negotiation', value: 'negotiation' },
   { label: 'Closed', value: 'closed' },
-];
-
-export const COMPANY_OPTIONS: Option[] = [
-  { label: 'Al-Barka Foods Pvt Ltd', value: 'al-barka' },
-  { label: 'Metro Cash & Carry', value: 'metro' },
-  { label: 'Dreamworld Resorts', value: 'dreamworld' },
-  { label: 'Pakola Beverages', value: 'pakola' },
 ];
 
 export const MEDIA_TYPE_OPTIONS: Option[] = [
