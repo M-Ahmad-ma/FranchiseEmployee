@@ -39,11 +39,7 @@ export function CompanyMediaScreen() {
     <DashboardLayout
       title="Company Media"
       subtitle="View and share images/videos/PDFs/locations for companies"
-      breadcrumbs={[
-        { label: 'Home' },
-        { label: 'Companies' },
-        { label: 'Media' },
-      ]}>
+      showMenu>
       <Card className="bg-white rounded-2xl p-4">
         <Text className="font-lato-bold text-lg text-neutral-900 mb-4">
           Select Company &amp; Media Type

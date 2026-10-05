@@ -78,7 +78,7 @@ export function FollowUpsScreen() {
     <DashboardLayout
       title="Follow-ups"
       subtitle="scheduled lead follow-ups"
-      breadcrumbs={[{ label: 'Home' }, { label: 'Follow-ups' }]}>
+      showMenu>
       <TabGroup
         tabs={TABS}
         value={tab}

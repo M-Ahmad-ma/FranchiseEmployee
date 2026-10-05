@@ -5,22 +5,27 @@ import {
   NavigationContainer,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import type { RootStackParamList } from './types';
-import { HomeScreen } from '../features/home/HomeScreen';
-import { RequestsScreen } from '../features/requests/RequestsScreen';
-import { FollowUpsScreen } from '../features/followUps/FollowUpsScreen';
-import { CompanyMediaScreen } from '../features/companyMedia/CompanyMediaScreen';
+import type { AppStackParamList } from './types';
+import { AuthProvider, useAuth } from './AuthContext';
+import { MainShell } from './MainShell';
+import { LoginScreen } from '../features/auth/LoginScreen';
+import { AppDrawerProvider } from '../shared/components/AppDrawer';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<AppStackParamList>();
 
-const linking: LinkingOptions<RootStackParamList> = {
+const linking: LinkingOptions<AppStackParamList> = {
   prefixes: [],
   config: {
     screens: {
-      Home: '',
-      Requests: 'requests',
-      FollowUps: 'follow-ups',
-      CompanyMedia: 'company-media',
+      Login: 'login',
+      Main: {
+        screens: {
+          Home: '',
+          Requests: 'requests',
+          FollowUps: 'follow-ups',
+          CompanyMedia: 'company-media',
+        },
+      },
     },
   },
 };
@@ -37,19 +42,40 @@ const navTheme = {
   },
 };
 
+function AppNavigator() {
+  const { isSignedIn } = useAuth();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+      }}>
+      {isSignedIn ? (
+        <Stack.Screen
+          name="Main"
+          component={MainShell}
+          options={{ animation: 'fade' }}
+        />
+      ) : (
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ animation: 'fade' }}
+        />
+      )}
+    </Stack.Navigator>
+  );
+}
+
 export function RootNavigator() {
   return (
-    <NavigationContainer linking={linking} theme={navTheme}>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: 'slide_from_right',
-        }}>
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Requests" component={RequestsScreen} />
-        <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
-        <Stack.Screen name="CompanyMedia" component={CompanyMediaScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AuthProvider>
+      <AppDrawerProvider>
+        <NavigationContainer linking={linking} theme={navTheme}>
+          <AppNavigator />
+        </NavigationContainer>
+      </AppDrawerProvider>
+    </AuthProvider>
   );
 }

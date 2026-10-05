@@ -66,11 +66,7 @@ export function RequestsScreen() {
     <DashboardLayout
       title="Filter Leads Requests"
       subtitle="Filter leads requests by various criteria"
-      breadcrumbs={[
-        { label: 'Home' },
-        { label: 'Tables' },
-        { label: 'Requests' },
-      ]}>
+      showMenu>
       {/* ---------- Filters ---------- */}
       <Card className="bg-white rounded-2xl p-4">
         <View className="flex-row items-center gap-2 mb-4">
