@@ -19,10 +19,12 @@ const linking: LinkingOptions<AppStackParamList> = {
     screens: {
       Login: 'login',
       Main: {
+        // The drawer exposes only the sections; LeadDetail is reachable by
+        // pushing it, so it stays out of this map.
         screens: {
           Home: '',
           Requests: 'requests',
-          Tasks: 'tasks',
+          FollowUps: 'follow-ups',
           CompanyMedia: 'company-media',
         },
       },

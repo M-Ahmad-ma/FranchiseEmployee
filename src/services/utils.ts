@@ -67,46 +67,39 @@ export const equals = (value: string | undefined, expected?: string) => {
   return term === '' || (value ?? '').trim().toLowerCase() === term;
 };
 
-const MONTHS = [
-  'jan',
-  'feb',
-  'mar',
-  'apr',
-  'may',
-  'jun',
-  'jul',
-  'aug',
-  'sep',
-  'oct',
-  'nov',
-  'dec',
-];
-
 /**
- * Best-effort date parsing. The API's date format is unspecified — the docs
- * show `01-Oct-2026` — so ISO, slashed and `DD-Mon-YYYY` are all accepted.
- * Returns null when the value can't be read, and callers skip that filter
- * rather than hiding every row.
+ * Converts the date picker's `mm/dd/yyyy` display value into the `YYYY-MM-DD`
+ * the API's `strtotime()` reads unambiguously. Values already in ISO form pass
+ * through, and anything unreadable returns undefined so the field is simply
+ * left out of the query instead of becoming a filter that matches nothing.
  */
-export function toTimestamp(value: string): number | null {
-  const trimmed = value.trim();
-  // A bare number like "5" would otherwise parse as a year-2001 date.
-  if (!/\d{4}/.test(trimmed)) {
-    return null;
+export function toApiDate(value?: string): string | undefined {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    return undefined;
   }
 
-  const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) {
-    return parsed;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
   }
 
-  const dmy = trimmed.match(/^(\d{1,2})[-\s]([A-Za-z]{3,})[-\s](\d{4})$/);
-  if (dmy) {
-    const month = MONTHS.indexOf(dmy[2].slice(0, 3).toLowerCase());
-    if (month >= 0) {
-      return Date.UTC(Number(dmy[3]), month, Number(dmy[1]));
-    }
+  const parts = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (!parts) {
+    return undefined;
   }
 
-  return null;
+  const [, month, day, year] = parts;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+/** Absolute URL for a server-stored relative path such as `uploads/...`. */
+export function resolveAssetPath(path: string, origin: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${origin.replace(/\/+$/, '')}/${trimmed.replace(/^\/+/, '')}`;
 }

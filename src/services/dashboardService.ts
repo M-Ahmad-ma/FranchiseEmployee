@@ -2,6 +2,7 @@ import { USE_MOCK } from '../config';
 import { delay, pickNumber } from './utils';
 import { get } from './httpClient';
 import { DASHBOARD_FIXTURE } from './mockFixtures';
+import { logMock } from './mockLogger';
 
 export interface DashboardStats {
   tasks: number;
@@ -18,6 +19,7 @@ export interface DashboardStats {
 export async function fetchDashboard(): Promise<DashboardStats> {
   if (USE_MOCK) {
     await delay();
+    logMock('dashboard', DASHBOARD_FIXTURE);
     return DASHBOARD_FIXTURE;
   }
 

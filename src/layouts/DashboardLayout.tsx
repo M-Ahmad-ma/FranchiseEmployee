@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Menu } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
+import { FollowUpsBell } from './FollowUpsBell';
 
 const circleButton =
   'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
@@ -24,6 +25,11 @@ interface Props {
   /** Enables pull-to-refresh; usually the screen's own `load`. */
   onRefresh?: () => void;
   refreshing?: boolean;
+  /**
+   * Shows the follow-ups bell. On by default wherever the drawer is available;
+   * pass false on screens where it would duplicate an existing bell.
+   */
+  showBell?: boolean;
   children: React.ReactNode;
 }
 
@@ -33,6 +39,7 @@ export function DashboardLayout({
   showMenu = false,
   onRefresh,
   refreshing = false,
+  showBell = true,
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -93,6 +100,8 @@ export function DashboardLayout({
                   </Text>
                 )}
               </View>
+
+              {showBell && <FollowUpsBell />}
             </View>
           </View>
           <View className="px-4 pt-6">{children}</View>

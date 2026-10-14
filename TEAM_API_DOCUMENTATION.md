@@ -32,9 +32,13 @@ brand/company dashboard API (`UserpanelApi.php`) are documented in
 16. [Investor Requests](#investor-requests)
 17. [Advertisements](#advertisements)
 18. [Subscribers](#subscribers)
-19. [Error Codes](#error-codes)
-20. [Worked Example](#worked-example)
-21. [Notes and Constraints](#notes-and-constraints)
+19. [Leads Filter](#leads-filter)
+20. [Leads Followups](#leads-followups)
+21. [Media Management](#media-management)
+22. [Lead Info Upload](#lead-info-upload)
+23. [Error Codes](#error-codes)
+24. [Worked Example](#worked-example)
+25. [Notes and Constraints](#notes-and-constraints)
 
 ---
 
@@ -278,8 +282,24 @@ curl -b cookies.txt "https://example.com/api/team/auth/me"
 | GET | `/api/team/investor-requests` | Yes | `home_m->get_investrequests()` |
 | GET | `/api/team/advertisements` | Yes | `advertisements_m->get()` |
 | GET | `/api/team/subscribers` | Yes | `home_m->get_subs()` |
+| GET | `/api/team/leads/filter` | Yes | own query builder over `email_history` |
+| GET | `/api/team/leads/filter/dropdowns` | Yes | `get_cities()`, `get_company_list()`, `get_employee_visible_pipeline_statuses()` |
+| POST | `/api/team/leads/info` | Yes | `Admin_model->insert_lead_detail()` |
+| GET | `/api/team/followups` | Yes | `Admin_model->get_all_followups()` |
+| GET | `/api/team/followups/bell` | Yes | `get_active_followups()` + `get_active_followups_count()` |
+| POST | `/api/team/followups/create` | Yes | `Admin_model->add_lead_followup()` |
+| GET | `/api/team/followups/:lead_id` | Yes | `Admin_model->get_lead_followups()` |
+| POST | `/api/team/followups/:id/done` | Yes | `get_followup_lead_employee()` + `mark_followup_done()` |
+| GET | `/api/team/media` | Yes | `fetch_all_companies_for_media()`, `fetch_all_media_options()` |
+| GET | `/api/team/media/company/:company_id` | Yes | `Admin_model->get_media_files_by_company()` |
+| POST | `/api/team/media/upload` | Yes | `Admin_model->insert_company_media_record()` |
+| POST | `/api/team/media/delete/:media_id` | Yes | `get_single_media_record()` + `remove_company_media_record()` |
 
-**41 routes, 38 public methods.** Every public method has at least one route.
+**53 routes, 52 public methods.** Every public method has at least one route.
+
+> `POST /api/team/media/upload` also handles the "Brand Location" case — when
+> `option_name` is sent as the literal string `Brand Location` it stores
+> `location_url` instead of uploading a file. Same endpoint, no separate route.
 
 ---
 
@@ -1440,6 +1460,458 @@ curl -b cookies.txt "https://example.com/api/team/subscribers"
 
 ---
 
+## Leads Filter
+
+Ported from the web `Team::filter_requests_employee()`.
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| GET | `/api/team/leads/filter` | Leads assigned to the logged-in employee, filtered + paginated |
+| GET | `/api/team/leads/filter/dropdowns` | City, company and pipeline dropdown sources |
+
+### The employee id is not a parameter
+
+The filter is **always scoped to the session's `emp_id`**. There is no
+`employee` or `employee_assign` query param, and sending one changes nothing —
+the controller reads `emp_id` from the session and passes it straight into the
+query builder. This mirrors the web controller, which deliberately ignores
+`?employee=` for the same reason. If you need a cross-employee view, that is a
+different endpoint and does not exist yet.
+
+### GET `/api/team/leads/filter`
+
+**Auth required:** Yes
+
+**Query params** — all optional, all `XSS`-filtered:
+| Param | Type | Description |
+|-------|------|-------------|
+| `city` | int | `email_history.e_city` = `cities.id` |
+| `brand` | int | `email_history.e_co_id` = `companies.co_id` |
+| `investor` | string | Free-text over `e_firstname`, `e_lastname`, `e_phonenumber`. Multi-word is AND across tokens, each token ORs the three columns. |
+| `deal_done` | string | `1`/`0`, or legacy `yes`/`no` |
+| `meeting_type` | string | `1`/`2`/`3`, or `none` to match `IS NULL` |
+| `pipeline` | int | Cast to int server-side |
+| `start_date` | string | Any `strtotime`-parsable date; inclusive lower bound |
+| `end_date` | string | Any `strtotime`-parsable date; inclusive upper bound |
+| `comment_search` | string | Matches `req_comment` OR any comment in `lead_comments` for that lead |
+| `page` | int | 1-based, default `1` |
+| `per_page` | int | Default `20`, **capped at 200** |
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/leads/filter?deal_done=1&pipeline=1&per_page=50&page=1"
+curl -b cookies.txt "https://example.com/api/team/leads/filter?investor=Ali+Khan"
+curl -b cookies.txt "https://example.com/api/team/leads/filter?start_date=2026-01-01&end_date=2026-10-13"
+```
+
+**Example:** `GET /api/team/leads/filter?pipeline=1&page=2&per_page=20`
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Leads filter",
+  "data": {
+    "leads": [
+      {
+        "e_id": "1421",
+        "e_firstname": "Ali",
+        "e_lastname": "Khan",
+        "e_city": "47961",
+        "e_co_id": "1115",
+        "e_date": "12-Oct-2026",
+        "employee_id": "5",
+        "deal_done": "0",
+        "meeting_type": "1",
+        "pipeline": "1",
+        "req_comment": "Called, will follow up",
+        "co_name": "Mr.COD",
+        "city_name": "Lahore"
+      }
+    ],
+    "total": 87
+  },
+  "meta": {
+    "total": 87,
+    "page": 2,
+    "per_page": 20,
+    "pages": 5
+  }
+}
+```
+
+`co_name` and `city_name` come from `LEFT JOIN` on `companies` and `cities`, so
+they are `null` when the lead points at a deleted record.
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | `start_date` or `end_date` was present but `strtotime()` could not parse it |
+| 401 | No or expired session, or `emp_id` missing from the session |
+
+### GET `/api/team/leads/filter/dropdowns`
+
+Everything the filter screen needs for its pickers, in one call.
+
+**Auth required:** Yes
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/leads/filter/dropdowns"
+```
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Lead filter dropdowns",
+  "data": {
+    "cities": [],
+    "companies": [],
+    "pipeline_statuses": []
+  }
+}
+```
+
+---
+
+## Leads Followups
+
+Ported from `Team::followups()`, `add_lead_followup()`,
+`get_followups_bell_ajax()`, `get_lead_followups_ajax()` and
+`mark_followup_done()`.
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| GET | `/api/team/followups` | All follow-ups for this employee |
+| GET | `/api/team/followups/bell` | Badge count + 5 most recent active |
+| POST | `/api/team/followups/create` | Schedule a follow-up |
+| GET | `/api/team/followups/:lead_id` | Follow-ups for one lead |
+| POST | `/api/team/followups/:id/done` | Close a follow-up |
+
+### GET `/api/team/followups`
+
+**Auth required:** Yes
+
+**Query params:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `status` | string | `active` | `active`, `all`, or any other value is passed through to `get_all_followups()` as the status filter |
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/followups"
+curl -b cookies.txt "https://example.com/api/team/followups?status=all"
+```
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Followups list",
+  "data": { "followups": [], "status": "active" }
+}
+```
+
+`status=all` becomes a `NULL` filter argument server-side, matching the web.
+
+### GET `/api/team/followups/bell`
+
+**Auth required:** Yes
+
+**Query params:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `limit` | int | `5` | Rows returned. `0` or negative falls back to 5. |
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Followups bell",
+  "data": { "followups": [], "count": 4 }
+}
+```
+
+### POST `/api/team/followups/create`
+
+**Auth required:** Yes
+
+**Request body** — form-encoded or multipart, the model is called with explicit arguments:
+| Field | Required | Notes |
+|-------|----------|-------|
+| `lead_id` | Yes | Lead the follow-up belongs to |
+| `followup_date` | Yes | |
+| `followup_time` | Yes | |
+| `comment` | Yes | Trimmed; whitespace-only is rejected |
+
+**curl:**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/followups/create" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "lead_id=1421&followup_date=2026-10-20&followup_time=14:30&comment=Call+back+about+pricing"
+```
+
+**Success (201):**
+```json
+{ "status": true, "message": "Follow-up scheduled", "data": true }
+```
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | Any of the four fields missing or blank |
+| 500 | Model returned `false` |
+
+### GET `/api/team/followups/:lead_id`
+
+**Auth required:** Yes
+
+**Path params:** `lead_id` (int)
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/followups/1421"
+```
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Lead followups",
+  "data": { "lead_id": 1421, "followups": [] }
+}
+```
+
+### POST `/api/team/followups/:id/done`
+
+Close a follow-up. Carries the ownership check from the web controller —
+an employee can only close follow-ups on leads assigned to them.
+
+**Auth required:** Yes
+
+**Path params:** `id` (int) — the **follow-up** id, not the lead id.
+
+**curl:**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/followups/88/done"
+```
+
+**Success (200):**
+```json
+{ "status": true, "message": "Follow-up closed", "data": true }
+```
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | `id` empty |
+| 403 | The follow-up's lead belongs to another employee |
+| 500 | Model returned `false` |
+
+---
+
+## Media Management
+
+Ported from `Team::company_media_management()`, `upload_company_media_files()`,
+`delete_company_media_file()` and `get_company_media_ajax()`.
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| GET | `/api/team/media` | Company + media-type dropdowns |
+| GET | `/api/team/media/company/:company_id` | Files for one company |
+| POST | `/api/team/media/upload` | Upload files, or save a Brand Location URL |
+| POST | `/api/team/media/delete/:media_id` | Delete one media row |
+
+### GET `/api/team/media`
+
+**Auth required:** Yes
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/media"
+```
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Media management",
+  "data": { "all_companies": [], "all_media_options": [] }
+}
+```
+
+### GET `/api/team/media/company/:company_id`
+
+**Auth required:** Yes
+
+**Path params:** `company_id` (int)
+
+**curl:**
+```bash
+curl -b cookies.txt "https://example.com/api/team/media/company/1115"
+```
+
+**Success (200):**
+```json
+{
+  "status": true,
+  "message": "Company media files",
+  "data": { "company_id": 1115, "media_files": [] }
+}
+```
+
+### POST `/api/team/media/upload`
+
+**`multipart/form-data` required** — `$_FILES` is read directly.
+
+**Fields:**
+| Field | Required | Notes |
+|-------|----------|-------|
+| `company_id` | Yes | |
+| `option_id` | Yes | Media type, from `all_media_options` |
+| `option_name` | No | Send the literal string `Brand Location` to store a URL instead of a file |
+| `location_url` | Yes, if `option_name` = `Brand Location` | Google Maps URL |
+| `media_files` | Yes, otherwise | One or more files, sent as `media_files[]` |
+
+**curl (files):**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/media/upload" \
+  -F "company_id=1115" \
+  -F "option_id=3" \
+  -F "media_files[]=@/path/to/brochure.pdf" \
+  -F "media_files[]=@/path/to/video.mp4"
+```
+
+**curl (Brand Location):**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/media/upload" \
+  -F "company_id=1115" \
+  -F "option_id=9" \
+  -F "option_name=Brand Location" \
+  -F "location_url=https://maps.app.goo.gl/xxxxx"
+```
+
+**Constraints:**
+| Rule | Value |
+|------|-------|
+| Allowed types | `jpg`, `jpeg`, `png`, `gif`, `mp4`, `avi`, `mov`, `webm`, `pdf` |
+| Max size | unlimited (`max_size` = 0) — **client-side validation required** |
+| Filename | `time() . rand(1000,9999) . rand(1000,9999) . '.' . ext` |
+| Storage | `FCPATH/uploads/company_media/`, created with `mkdir` if absent |
+| DB path | `uploads/company_media/<filename>` — same relative form the web stores and deletes against |
+
+**Success (201) — files:**
+```json
+{
+  "status": true,
+  "message": "2 file(s) uploaded successfully",
+  "data": {
+    "uploaded": [
+      { "media_id": 501, "file_name": "17600000001234567.pdf" },
+      { "media_id": 502, "file_name": "17600000009988765.mp4" }
+    ],
+    "uploaded_count": 2,
+    "error_count": 0,
+    "errors": []
+  }
+}
+```
+
+**Success (201) — Brand Location:** `data: { "media_id": 503 }`
+
+**Partial success:** the loop keeps going after a per-file failure, so a mixed
+batch returns `201` with `uploaded`, `error_count` and `errors` all populated.
+Only a batch where **nothing** succeeded returns an error.
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | `company_id` or `option_id` missing; no files; `location_url` missing for Brand Location |
+| 500 | Every file in the batch failed — message is the joined CI3 upload errors |
+
+> **Upload size is unbounded server-side.** `max_size` is `0` in the web
+> controller and that is carried over deliberately. Enforce a limit in the app,
+> or a user can push a multi-gigabyte video into the uploads directory.
+
+### POST `/api/team/media/delete/:media_id`
+
+**Auth required:** Yes
+
+**Path params:** `media_id` (int)
+
+**curl:**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/media/delete/501"
+```
+
+The file is unlinked from disk **only** if `file_path` is not a `http(s)://`
+URL, so Brand Location rows lose their DB row without touching anything on disk.
+
+**Success (200):**
+```json
+{ "status": true, "message": "Media deleted successfully", "data": true }
+```
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | `media_id` empty |
+| 404 | No such media row |
+| 500 | DB delete failed |
+
+---
+
+## Lead Info Upload
+
+Ported from `Team::upload_lead_info()`.
+
+### POST `/api/team/leads/info`
+
+Attach an image to a lead.
+
+**`multipart/form-data` required.**
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `lead_id` | Yes | Lead the image belongs to |
+| `title` | Yes | Caption |
+| `img_file` | Yes | One image file |
+
+**curl:**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/leads/info" \
+  -F "lead_id=1421" \
+  -F "title=Storefront" \
+  -F "img_file=@/path/to/storefront.jpg"
+```
+
+**Constraints:**
+| Rule | Value |
+|------|-------|
+| Allowed types | `jpg`, `jpeg`, `png`, `gif` |
+| Max size | 5048 KB (about 5 MB) |
+| Filename | randomised — `encrypt_name` is on |
+| Storage | `FCPATH/public/admin/leads/`, created with `mkdir` if absent |
+| DB path | `public/admin/leads/<filename>` |
+
+**Success (201):**
+```json
+{
+  "status": true,
+  "message": "Lead uploaded successfully",
+  "data": { "lead_id": 1421, "img_path": "public/admin/leads/a1b2c3d4e5.jpg" }
+}
+```
+
+**Errors:**
+| Code | Meaning |
+|------|---------|
+| 400 | `lead_id` or `title` missing, no file, or CI3 rejected the file — message is `display_errors('', '')` |
+| 500 | `insert_lead_detail()` returned falsy — the file is on disk but the row was not written |
+
+---
+
 ## Error Codes
 
 | Code | Meaning |
@@ -1497,6 +1969,36 @@ curl -b cookies.txt "https://example.com/api/team/requests/12/company/1115"
 curl -b cookies.txt -X POST "https://example.com/api/team/auth/logout"
 ```
 
+### Leads Filter + Followups + Media
+
+```bash
+# 1. Dropdown sources for the filter screen
+curl -b cookies.txt "https://example.com/api/team/leads/filter/dropdowns"
+
+# 2. My leads, filtered, second page
+curl -b cookies.txt "https://example.com/api/team/leads/filter?pipeline=1&deal_done=0&page=2&per_page=20"
+
+# 3. Badge count for the follow-ups bell
+curl -b cookies.txt "https://example.com/api/team/followups/bell"
+
+# 4. Schedule a follow-up on lead 1421
+curl -b cookies.txt -X POST "https://example.com/api/team/followups/create" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "lead_id=1421&followup_date=2026-10-20&followup_time=14:30&comment=Call+back"
+
+# 5. Attach an image to a lead
+curl -b cookies.txt -X POST "https://example.com/api/team/leads/info" \
+  -F "lead_id=1421" -F "title=Storefront" -F "img_file=@/path/to/storefront.jpg"
+
+# 6. Media — dropdowns, then upload
+curl -b cookies.txt "https://example.com/api/team/media"
+curl -b cookies.txt -X POST "https://example.com/api/team/media/upload" \
+  -F "company_id=1115" -F "option_id=3" -F "media_files[]=@/path/to/brochure.pdf"
+
+# 7. Close follow-up 88
+curl -b cookies.txt -X POST "https://example.com/api/team/followups/88/done"
+```
+
 ---
 
 ## Notes and Constraints
@@ -1537,11 +2039,35 @@ model sees an empty body and the write silently no-ops:
   `emp_id`-scoped queries.
 - **All endpoints load 13 models.** `TeamApi::load_models()` is called per request,
   which is heavier than needed, but it is what keeps each method self-contained.
-- **No pagination anywhere.** Every list endpoint returns the full result set. Filter
-  client-side, or ask the server team to add limits.
+- **Pagination exists only on `/api/team/leads/filter`.** Every other list endpoint
+  returns the full result set. The filter returns `data.total` plus a top-level
+  `meta` block (`total`, `page`, `per_page`, `pages`) via `MY_Controller::response_paginate()`.
+  `per_page` is clamped to 200.
 - **`me` returns one row of the shared employee list.** It filters
   `get_emploeelist()` by `u_id`, so the response shape matches the `employee` key
   already returned by `task_details`. It is a linear scan, not an indexed lookup.
+
+### Differences from the web controllers
+
+Four behaviours changed during the port. All are deliberate.
+
+1. **Pagination library replaced with `LIMIT`/`OFFSET`.** The web controllers call
+   `$this->pagination->initialize()` and render Bootstrap markup. That has no
+   meaning in JSON, so the API takes `page` and `per_page` and returns `meta`.
+   The web's `per_page` parameter is actually an **offset**, not a page size —
+   do not copy that convention.
+2. **Upload paths are absolute.** `Team::upload_company_media_files()` uses
+   `'./uploads/company_media/'`, which is relative to the PHP working directory.
+   The API uses `FCPATH . 'uploads/company_media/'`. The stored DB path stays in
+   the web's relative form (`uploads/company_media/...`) so both controllers can
+   read and delete each other's rows.
+3. **Date filters are escaped.** The web interpolates `start_date`/`end_date`
+   straight into raw SQL with `$this->db->where($sql, FALSE)`. The API passes them
+   through `$this->db->escape()` and rejects unparseable dates with a `400` instead
+   of silently falling back to 1970.
+4. **Flashdata and redirects removed.** `upload_lead_info()` and
+   `delete_company_media_file()` set flash messages and `echo` raw JSON on the web.
+   Both return the standard `{status, message, data}` envelope here.
 
 ### Model call verification
 
@@ -1570,5 +2096,36 @@ live call site is inside this file:
 | `POST /api/team/tasks/:assign_id/status` | `Admin_model->task_status($assign_id, $status)` | Two arguments, matching `Team.php:269` exactly. |
 
 Route coverage and method arities were verified with a script that resolves every
-`api/team` route to its target method: 41 routes, 38 public methods, 0 unresolved,
+`api/team` route to its target method: 53 routes, 52 public methods, 0 unresolved,
 0 arity mismatches.
+
+### The 13 newest model calls
+
+All thirteen `Admin_model` methods used by the Leads Filter, Leads Followups and
+Media Management endpoints were confirmed to exist — you stated they are present on
+the server. Each is called with the same argument list the web controller uses, so
+there is no argument-shape risk:
+
+| Endpoint | Model call | Web call site |
+|----------|-----------|---------------|
+| `GET /leads/filter/dropdowns` | `get_cities()` | `Team.php:3061` |
+| | `get_company_list()` | `Team.php:3062` |
+| | `get_employee_visible_pipeline_statuses()` | `Team.php:3063` |
+| `GET /followups` | `get_all_followups($emp_id, $status)` | `Team.php:3558` |
+| `GET /followups/bell` | `get_active_followups($emp_id, 5)` | `Team.php:3564` |
+| | `get_active_followups_count($emp_id)` | `Team.php:3565` |
+| `POST /followups/create` | `add_lead_followup($lead_id, $date, $time, $comment)` | `Team.php:3533` |
+| `GET /followups/:lead_id` | `get_lead_followups($lead_id)` | `Team.php:3540` |
+| `POST /followups/:id/done` | `get_followup_lead_employee($id)` | `Team.php:3577` |
+| | `mark_followup_done($id)` | `Team.php:3583` |
+| `GET /media` | `fetch_all_companies_for_media()` | `Team.php:3340` |
+| | `fetch_all_media_options()` | `Team.php:3341` |
+| `GET /media/company/:id` | `get_media_files_by_company($company_id)` | `Team.php:3487` |
+| `POST /media/upload` | `insert_company_media_record($data)` | `Team.php:3372`, `3427` |
+| `POST /media/delete/:id` | `get_single_media_record($media_id)` | `Team.php:3461` |
+| | `remove_company_media_record($media_id)` | `Team.php:3469` |
+| `POST /leads/info` | `insert_lead_detail($data)` | `Team.php:3319` |
+
+`/leads/filter` itself calls no model — it builds its query in the controller over
+`email_history`, `companies` and `cities`, ported from `Team::get_filtered_requests()`
+and `Team::get_filtered_requests_count()`. That is the same approach the web takes.

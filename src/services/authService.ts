@@ -8,6 +8,7 @@ import {
   postJson,
 } from './httpClient';
 import { EMPLOYEE_FIXTURE } from './mockFixtures';
+import { logMock } from './mockLogger';
 
 /** Authenticated employee, normalised from `data.employee`. */
 export interface AuthUser {
@@ -68,7 +69,10 @@ export async function signIn({
     if (!isValidEmail(email) || password.length < MIN_PASSWORD_LENGTH) {
       throw new Error('Incorrect email or password.');
     }
-    return normalizeEmployee(EMPLOYEE_FIXTURE);
+    const employee = normalizeEmployee(EMPLOYEE_FIXTURE);
+    // The password is deliberately left out of the log.
+    logMock('auth/login', employee);
+    return employee;
   }
 
   const data = await postJson<{ employee?: Record<string, unknown> }>(
@@ -103,7 +107,9 @@ export async function signIn({
 export async function fetchProfile(): Promise<AuthUser> {
   if (USE_MOCK) {
     await delay();
-    return normalizeEmployee(EMPLOYEE_FIXTURE);
+    const employee = normalizeEmployee(EMPLOYEE_FIXTURE);
+    logMock('auth/me', employee);
+    return employee;
   }
 
   const data = await get<Record<string, unknown>>('auth/me');
@@ -131,6 +137,7 @@ export async function signOut(): Promise<void> {
 
   if (USE_MOCK) {
     await delay();
+    logMock('auth/logout');
   }
   clearSession();
 }

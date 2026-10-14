@@ -31,3 +31,17 @@ jest.mock('@react-native-community/datetimepicker', () => {
     default: DateTimePicker,
   };
 });
+
+// Both pickers resolve a native TurboModule at import time, which does not
+// exist under Jest. Every launcher reports "cancelled" so no test needs a file.
+jest.mock('react-native-image-picker', () => ({
+  launchCamera: jest.fn(async () => ({ didCancel: true })),
+  launchImageLibrary: jest.fn(async () => ({ didCancel: true })),
+}));
+
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(async () => []),
+  types: {},
+  isErrorWithCode: jest.fn(() => false),
+  errorCodes: {},
+}));

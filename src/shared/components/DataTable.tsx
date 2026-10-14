@@ -1,5 +1,11 @@
 import React from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 export interface TableColumn<T> {
   key: string;
@@ -13,6 +19,11 @@ interface Props<T> {
   columns: TableColumn<T>[];
   data: T[];
   emptyMessage: string;
+  /**
+   * Makes a row tappable. Rendered as a Pressable behind the cells so the
+   * column `render` functions still paint on top and stay pressable themselves.
+   */
+  onPressRow?: (row: T) => void;
 }
 
 const alignment = (align: TableColumn<unknown>['align']) => {
@@ -25,7 +36,12 @@ const alignment = (align: TableColumn<unknown>['align']) => {
   return 'flex-start' as const;
 };
 
-export function DataTable<T>({ columns, data, emptyMessage }: Props<T>) {
+export function DataTable<T>({
+  columns,
+  data,
+  emptyMessage,
+  onPressRow,
+}: Props<T>) {
   const { width } = useWindowDimensions();
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
   const viewportWidth = Math.max(width - 32, tableWidth);
@@ -58,9 +74,13 @@ export function DataTable<T>({ columns, data, emptyMessage }: Props<T>) {
           </View>
         ) : (
           data.map((row, rowIndex) => (
-            <View
+            <Pressable
               key={rowIndex}
-              className="flex-row border-b border-neutral-200 bg-white">
+              disabled={!onPressRow}
+              onPress={onPressRow ? () => onPressRow(row) : undefined}
+              className="flex-row border-b border-neutral-200 bg-white"
+              accessibilityRole={onPressRow ? 'button' : undefined}
+              accessibilityLabel={onPressRow ? 'Open row' : undefined}>
               {columns.map(column => (
                 <View
                   key={column.key}
@@ -81,7 +101,7 @@ export function DataTable<T>({ columns, data, emptyMessage }: Props<T>) {
                   )}
                 </View>
               ))}
-            </View>
+            </Pressable>
           ))
         )}
       </View>

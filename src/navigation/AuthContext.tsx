@@ -18,12 +18,9 @@ import { setUnauthorizedHandler } from '../services/httpClient';
 interface AuthContextValue {
   user: AuthUser | null;
   isSignedIn: boolean;
-  /** True while a background profile refresh is in flight. */
   isRefreshingProfile: boolean;
-  /** Resolves with the signed-in user; rejects with a displayable message. */
   signIn: (credentials: Credentials) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Re-reads the profile from `GET /auth/me`. Never rejects. */
   refreshProfile: () => Promise<void>;
 }
 
@@ -45,8 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setUser(await fetchProfile());
     } catch {
-      // Keep whatever we already have. A 401 has already been handled by the
-      // unauthorized handler, which clears the session.
     } finally {
       setIsRefreshingProfile(false);
     }
@@ -55,7 +50,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(
     async (credentials: Credentials) => {
       const authed = await signInRequest(credentials);
-      // Paint immediately from the login response, then let /auth/me confirm it.
       setUser(authed);
       void refreshProfile();
     },
@@ -66,13 +60,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await signOutRequest();
     } finally {
-      // Clear locally even if the request failed, so a 401 or a dropped
-      // connection can never leave the user stranded mid-session.
       setUser(null);
     }
   }, []);
 
-  // A 401 from any request — or the cookie lapsing — drops us back to Login.
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
     return () => setUnauthorizedHandler(null);

@@ -1,15 +1,30 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-/** The authenticated app area — every screen reachable once signed in. */
+/** A lead opened from the filter list or a follow-up row. */
+export interface LeadDetailParams {
+  leadId: string;
+  /** Passed through so the header paints before the fetch resolves. */
+  investor?: string;
+  phone?: string;
+  company?: string;
+}
+
+/** The signed-in screens: four drawer sections plus one detail screen. */
 export type RootStackParamList = {
   Home: undefined;
   Requests: undefined;
-  Tasks: undefined;
+  FollowUps: undefined;
   CompanyMedia: undefined;
+  LeadDetail: LeadDetailParams;
 };
 
-/** The nested stack rendered inside the drawer shell. */
-export type MainStackParamList = RootStackParamList;
+/**
+ * The nested stack rendered inside the drawer shell.
+ *
+ * The drawer only lists the four sections, so `LeadDetail` is excluded from
+ * navigation targets — it is pushed from a row, never chosen from the drawer.
+ */
+export type MainStackParamList = Omit<RootStackParamList, 'LeadDetail'>;
 
 /** Outer shell: the auth gate plus the drawer-wrapped app area. */
 export type AppStackParamList = {

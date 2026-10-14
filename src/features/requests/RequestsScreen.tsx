@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Filter, RefreshCw } from 'lucide-react-native';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { AlertBanner } from '../../shared/components/AlertBanner';
@@ -9,59 +10,73 @@ import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
 import { DataTable, type TableColumn } from '../../shared/components/DataTable';
 import { DateField } from '../../shared/components/DateField';
+import { Pagination } from '../../shared/components/Pagination';
 import { SelectField } from '../../shared/components/SelectField';
 import { TextField } from '../../shared/components/TextField';
 import { useGrid } from '../../shared/hooks/useGrid';
 import {
-  applyRequestFilters,
-  fetchRequests,
-  type LeadRequestFilters,
-  type LeadRequestRow,
-} from '../../services/requestsService';
+  dealDoneLabel,
+  fetchFilteredLeads,
+  fetchLeadFilterDropdowns,
+  meetingTypeLabel,
+  withPipelineNames,
+  type LeadFilterDropdowns,
+  type LeadFilterParams,
+  type LeadFilterRow,
+} from '../../services/leadsFilterService';
 import {
-  BRAND_OPTIONS,
-  CITY_OPTIONS,
   DEALS_DONE_OPTIONS,
   MEETING_TYPE_OPTIONS,
-  PIPELINE_STATUS_OPTIONS,
   RECORDS_PER_PAGE_OPTIONS,
 } from '../../services/options';
-import type { Option } from '../../services/utils';
+import type { RootStackParamList } from '../../navigation/types';
+import type { PageMeta } from '../../services/httpClient';
+
+const EMPTY_DROPDOWNS: LeadFilterDropdowns = {
+  cities: [],
+  companies: [],
+  pipelineStatuses: [],
+};
+
+const EMPTY_META: PageMeta = { total: 0, page: 1, per_page: 10, pages: 1 };
 
 const HELPER_TEXT =
-  'Leads reload each time you return here, and the filters run on your device — this endpoint has no server-side filtering.';
+  'Filters and pagination run on the server, so the count below is every lead matching your criteria — not just this page.';
 
-/**
- * Builds dropdown options from the rows that actually came back, so the filters
- * only ever offer values present in the data and update as it changes. Falls
- * back to the reference lists while loading or when the result set is empty.
- */
-function optionsFrom(values: (string | undefined)[], fallback: Option[]) {
-  const distinct = Array.from(
-    new Set(values.map(value => (value ?? '').trim()).filter(Boolean)),
-  )
-    .sort((a, b) => a.localeCompare(b))
-    .map(value => ({ label: value, value }));
-
-  return distinct.length > 0 ? distinct : fallback;
-}
-
-const columns: TableColumn<LeadRequestRow>[] = [
+const columns: TableColumn<LeadFilterRow>[] = [
   { key: 'investor', title: 'Investor', width: 150 },
   { key: 'phone', title: 'Phone', width: 130 },
   { key: 'city', title: 'City', width: 110 },
-  { key: 'brand', title: 'Brand', width: 110 },
-  { key: 'meetingType', title: 'Meeting', width: 110 },
-  { key: 'dealsDone', title: 'Deals', width: 100 },
+  { key: 'brand', title: 'Brand', width: 120 },
+  {
+    key: 'meetingType',
+    title: 'Meeting',
+    width: 110,
+    render: row => (
+      <Text className="font-lato text-sm text-neutral-900">
+        {meetingTypeLabel(row.meetingType) || '—'}
+      </Text>
+    ),
+  },
+  {
+    key: 'dealDone',
+    title: 'Deal',
+    width: 90,
+    render: row => (
+      <Text className="font-lato text-sm text-neutral-900">
+        {dealDoneLabel(row.dealDone) || '—'}
+      </Text>
+    ),
+  },
   { key: 'date', title: 'Date', width: 110 },
   {
-    key: 'pipelineStatus',
+    key: 'pipelineLabel',
     title: 'Status',
     width: 130,
     render: row => (
       <View className="rounded-full bg-primary-200 px-3 py-1 self-start">
         <Text className="font-lato-bold text-[11px] text-primary-700">
-          {row.pipelineStatus || '—'}
+          {row.pipelineLabel || '—'}
         </Text>
       </View>
     ),
@@ -69,87 +84,90 @@ const columns: TableColumn<LeadRequestRow>[] = [
 ];
 
 export function RequestsScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { itemWidth } = useGrid({ inset: 64, gap: 16 });
   const fieldStyle = { width: itemWidth };
 
-  const [filters, setFilters] = useState<LeadRequestFilters>({});
-  const [recordsPerPage, setRecordsPerPage] = useState('10');
-  const [rows, setRows] = useState<LeadRequestRow[]>([]);
+  const [filters, setFilters] = useState<LeadFilterParams>({});
+  const [perPage, setPerPage] = useState('10');
+  const [page, setPage] = useState(1);
+
+  const [dropdowns, setDropdowns] = useState<LeadFilterDropdowns>(EMPTY_DROPDOWNS);
+  const [dropdownsLoading, setDropdownsLoading] = useState(true);
+  const [rows, setRows] = useState<LeadFilterRow[]>([]);
+  const [meta, setMeta] = useState<PageMeta>(EMPTY_META);
   const [loading, setLoading] = useState(true);
-  const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadDropdowns = useCallback(async () => {
+    setDropdownsLoading(true);
+    try {
+      setDropdowns(await fetchLeadFilterDropdowns());
+    } catch {
+      // The filter still works without pickers; leave them empty.
+    } finally {
+      setDropdownsLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchRequests());
+      const { data, meta: nextMeta } = await fetchFilteredLeads({
+        ...filters,
+        page,
+        perPage: Number(perPage) || 10,
+      });
+      setMeta(nextMeta);
+      setRows(withPipelineNames(data.leads, dropdowns.pipelineStatuses));
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dropdowns.pipelineStatuses, filters, page, perPage]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      void loadDropdowns();
+    }, [loadDropdowns]),
   );
 
-  const visibleRows = useMemo(
-    () => applyRequestFilters(rows, filters),
-    [filters, rows],
+  // Pipeline names arrive with the dropdowns, so re-label once they land.
+  useEffect(() => {
+    void load();
+    // Runs once on mount; every later change goes through Apply or the pager.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pipelineOptions = useMemo(
+    () =>
+      dropdowns.pipelineStatuses.map(status => ({
+        label: status.name,
+        value: status.id,
+      })),
+    [dropdowns.pipelineStatuses],
   );
 
-  const cityOptions = useMemo(
-    () =>
-      optionsFrom(
-        rows.map(row => row.city),
-        CITY_OPTIONS,
-      ),
-    [rows],
-  );
-  const brandOptions = useMemo(
-    () =>
-      optionsFrom(
-        rows.map(row => row.brand),
-        BRAND_OPTIONS,
-      ),
-    [rows],
-  );
-  const meetingTypeOptions = useMemo(
-    () =>
-      optionsFrom(
-        rows.map(row => row.meetingType),
-        MEETING_TYPE_OPTIONS,
-      ),
-    [rows],
-  );
-  const pipelineStatusOptions = useMemo(
-    () =>
-      optionsFrom(
-        rows.map(row => row.pipelineStatus),
-        PIPELINE_STATUS_OPTIONS,
-      ),
-    [rows],
-  );
-  const dealsDoneOptions = useMemo(
-    () =>
-      optionsFrom(
-        rows.map(row => row.dealsDone),
-        DEALS_DONE_OPTIONS,
-      ),
-    [rows],
-  );
+  const setFilter = <K extends keyof LeadFilterParams>(
+    key: K,
+    value: string,
+  ) => setFilters(prev => ({ ...prev, [key]: value as never }));
 
-  const setFilter = (key: keyof LeadRequestFilters, value: string) =>
-    setFilters(prev => ({ ...prev, [key]: value }));
-
+  /** Changing a filter invalidates the current page, so Apply starts at page 1. */
   const resetFilters = () => {
     setFilters({});
-    setApplied(false);
+    setPage(1);
   };
+
+  const changePage = (next: number) => {
+    setPage(next);
+    void load();
+  };
+
+  console.log(filters)
 
   return (
     <DashboardLayout
@@ -170,17 +188,17 @@ export function RequestsScreen() {
         <View className="flex-row flex-wrap gap-4">
           <SelectField
             label="City"
-            placeholder="Select City"
+            placeholder={dropdownsLoading ? 'Loading cities…' : 'Select City'}
             value={filters.city}
-            options={cityOptions}
+            options={dropdowns.cities}
             onChange={v => setFilter('city', v)}
             style={fieldStyle}
           />
           <SelectField
             label="Brand"
-            placeholder="Select Brand"
+            placeholder={dropdownsLoading ? 'Loading brands…' : 'Select Brand'}
             value={filters.brand}
-            options={brandOptions}
+            options={dropdowns.companies}
             onChange={v => setFilter('brand', v)}
             style={fieldStyle}
           />
@@ -194,44 +212,46 @@ export function RequestsScreen() {
           <TextField
             label="Search Comments"
             placeholder="Search comment text"
-            value={filters.comments ?? ''}
-            onChangeText={v => setFilter('comments', v)}
+            value={filters.commentSearch ?? ''}
+            onChangeText={v => setFilter('commentSearch', v)}
             style={fieldStyle}
           />
           <SelectField
             label="Deals Done"
-            placeholder="Select Deals Done"
-            value={filters.dealsDone}
-            options={dealsDoneOptions}
-            onChange={v => setFilter('dealsDone', v)}
+            placeholder="Any"
+            value={filters.dealDone}
+            options={DEALS_DONE_OPTIONS}
+            onChange={v => setFilter('dealDone', v)}
             style={fieldStyle}
           />
           <SelectField
             label="Meeting Type"
-            placeholder="All"
+            placeholder="Any"
             value={filters.meetingType}
-            options={meetingTypeOptions}
+            options={MEETING_TYPE_OPTIONS}
             onChange={v => setFilter('meetingType', v)}
             style={fieldStyle}
           />
           <SelectField
             label="Pipeline Status"
-            placeholder="All Statuses"
-            value={filters.pipelineStatus}
-            options={pipelineStatusOptions}
-            onChange={v => setFilter('pipelineStatus', v)}
+            placeholder={
+              dropdownsLoading ? 'Loading statuses…' : 'All Statuses'
+            }
+            value={filters.pipeline}
+            options={pipelineOptions}
+            onChange={v => setFilter('pipeline', v)}
             style={fieldStyle}
           />
           <DateField
             label="Date From"
-            value={filters.dateFrom}
-            onChange={v => setFilter('dateFrom', v)}
+            value={filters.startDate}
+            onChange={v => setFilter('startDate', v)}
             style={fieldStyle}
           />
           <DateField
             label="Date To"
-            value={filters.dateTo}
-            onChange={v => setFilter('dateTo', v)}
+            value={filters.endDate}
+            onChange={v => setFilter('endDate', v)}
             style={fieldStyle}
           />
         </View>
@@ -243,7 +263,10 @@ export function RequestsScreen() {
             className="flex-1"
             loading={loading}
             icon={<Filter size={16} color="#FFFFFF" />}
-            onPress={() => setApplied(true)}
+            onPress={() => {
+              setPage(1);
+              void load();
+            }}
           />
           <Button
             title="Reset"
@@ -252,7 +275,10 @@ export function RequestsScreen() {
             className="flex-1"
             disabled={loading}
             icon={<RefreshCw size={16} color="#FFFFFF" />}
-            onPress={resetFilters}
+            onPress={() => {
+              resetFilters();
+              void load();
+            }}
           />
         </View>
 
@@ -273,14 +299,17 @@ export function RequestsScreen() {
           <SelectField
             compact
             prefix="Records per page:"
-            placeholder={recordsPerPage}
-            value={recordsPerPage}
+            placeholder={perPage}
+            value={perPage}
             options={RECORDS_PER_PAGE_OPTIONS}
-            onChange={setRecordsPerPage}
+            onChange={v => {
+              setPerPage(v);
+              setPage(1);
+            }}
             modalTitle="Records per page"
           />
           <Badge
-            label={`Filtered Requests: ${applied ? visibleRows.length : rows.length}`}
+            label={`Filtered Requests: ${loading ? '—' : meta.total}`}
             tone="primary"
           />
         </View>
@@ -290,22 +319,26 @@ export function RequestsScreen() {
             <View className="items-center py-8">
               <ActivityIndicator size="large" color="#5279AC" />
             </View>
-          ) : !applied ? (
-            <View className="items-center py-8">
-              <Text className="text-neutral-600 font-lato text-base leading-6 text-center">
-                Apply filters to view requests.
-              </Text>
-            </View>
-          ) : visibleRows.length === 0 ? (
+          ) : rows.length === 0 ? (
             <AlertBanner message="No requests found for this filter." />
           ) : (
             <DataTable
               columns={columns}
-              data={visibleRows.slice(0, Number(recordsPerPage) || 10)}
+              data={rows}
               emptyMessage="No requests found."
+              onPressRow={row =>
+                navigation.navigate('LeadDetail', {
+                  leadId: row.id,
+                  investor: row.investor,
+                  phone: row.phone,
+                  company: row.brand,
+                })
+              }
             />
           )}
         </View>
+
+        <Pagination meta={meta} onChange={changePage} disabled={loading} />
       </Card>
     </DashboardLayout>
   );

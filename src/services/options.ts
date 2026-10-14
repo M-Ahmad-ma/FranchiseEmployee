@@ -3,59 +3,28 @@ import { Option } from './utils';
 /**
  * Reference data for dropdowns.
  *
- * These are fallbacks: the screens derive their filter options from the rows
- * the API actually returned, and only fall back to these lists while loading
- * or when a result set is empty.
+ * City, company and pipeline pickers are NOT listed here: they come from
+ * `GET /leads/filter/dropdowns` and the filter query needs their real ids, so
+ * a guessed list would send a value the server cannot match. The screens keep
+ * those pickers disabled until the dropdowns resolve.
  *
- * Companies are no longer listed here — they come from
- * `GET /api/team/companies`. Media types stay static because the Team API
- * exposes no media endpoint.
+ * The lists below are static because the API documents the codes it accepts.
  */
-export const CITY_OPTIONS: Option[] = [
-  { label: 'Lahore', value: 'lahore' },
-  { label: 'Karachi', value: 'karachi' },
-  { label: 'Islamabad', value: 'islamabad' },
-  { label: 'Faisalabad', value: 'faisalabad' },
-  { label: 'Multan', value: 'multan' },
-  { label: 'Peshawar', value: 'peshawar' },
-];
-
-export const BRAND_OPTIONS: Option[] = [
-  { label: 'McDonald’s', value: 'mcdonalds' },
-  { label: 'KFC', value: 'kfc' },
-  { label: 'Pizza Hut', value: 'pizza-hut' },
-  { label: 'Subway', value: 'subway' },
-  { label: 'Hardee’s', value: 'hardees' },
-];
 
 export const DEALS_DONE_OPTIONS: Option[] = [
-  { label: 'None', value: 'none' },
-  { label: '1 – 2', value: '1-2' },
-  { label: '3 – 5', value: '3-5' },
-  { label: '5+', value: '5-plus' },
+  { label: 'Yes', value: '1' },
+  { label: 'No', value: '0' },
 ];
 
+/**
+ * `none` is not a fourth meeting type — the controller turns it into an
+ * `IS NULL` match, so it labels a lead with no meeting type recorded.
+ */
 export const MEETING_TYPE_OPTIONS: Option[] = [
-  { label: 'All', value: 'all' },
-  { label: 'In Person', value: 'in-person' },
-  { label: 'Video Call', value: 'video-call' },
-  { label: 'Phone Call', value: 'phone-call' },
-];
-
-export const PIPELINE_STATUS_OPTIONS: Option[] = [
-  { label: 'All Statuses', value: 'all' },
-  { label: 'New Lead', value: 'new-lead' },
-  { label: 'Contacted', value: 'contacted' },
-  { label: 'Qualified', value: 'qualified' },
-  { label: 'Negotiation', value: 'negotiation' },
-  { label: 'Closed', value: 'closed' },
-];
-
-export const MEDIA_TYPE_OPTIONS: Option[] = [
-  { label: 'Images', value: 'image' },
-  { label: 'Videos', value: 'video' },
-  { label: 'PDFs', value: 'pdf' },
-  { label: 'Locations', value: 'location' },
+  { label: 'In Person', value: '1' },
+  { label: 'Video Call', value: '2' },
+  { label: 'Phone Call', value: '3' },
+  { label: 'Not Set', value: 'none' },
 ];
 
 export const RECORDS_PER_PAGE_OPTIONS: Option[] = [

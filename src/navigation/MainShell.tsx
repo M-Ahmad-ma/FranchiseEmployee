@@ -3,13 +3,19 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AppDrawer } from '../shared/components/AppDrawer';
 import { DrawerContent } from '../layouts/DrawerContent';
 import { useAuth } from './AuthContext';
-import type { MainStackParamList } from './types';
+import type { MainStackParamList, RootStackParamList } from './types';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
-import { TasksScreen } from '../features/tasks/TasksScreen';
+import { FollowUpsScreen } from '../features/followUps/FollowUpsScreen';
 import { CompanyMediaScreen } from '../features/companyMedia/CompanyMediaScreen';
+import { LeadDetailScreen } from '../features/leads/LeadDetailScreen';
 
-const Stack = createNativeStackNavigator<MainStackParamList>();
+/**
+ * The stack carries the detail screen too, so it is typed from the full list —
+ * `MainStackParamList` deliberately excludes `LeadDetail` to keep the drawer
+ * from offering a screen with no entry of its own.
+ */
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
  * The signed-in area: the app's screens, wrapped in the sliding drawer.
@@ -37,6 +43,18 @@ export function MainShell() {
     [reportActive],
   );
 
+  /**
+   * Lead detail has no drawer entry of its own, so it keeps the Leads Requests
+   * row highlighted — that is the section it is drilled into from.
+   */
+  const detailListeners = useMemo(
+    () =>
+      () => ({
+        focus: () => reportActive('Requests'),
+      }),
+    [reportActive],
+  );
+
   return (
     <AppDrawer drawer={<DrawerContent active={active} onSignOut={signOut} />}>
       <Stack.Navigator
@@ -47,8 +65,14 @@ export function MainShell() {
         screenListeners={screenListeners}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Requests" component={RequestsScreen} />
-        <Stack.Screen name="Tasks" component={TasksScreen} />
+        <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
         <Stack.Screen name="CompanyMedia" component={CompanyMediaScreen} />
+        <Stack.Screen
+          name="LeadDetail"
+          component={LeadDetailScreen}
+          options={{ animation: 'slide_from_right' }}
+          listeners={detailListeners}
+        />
       </Stack.Navigator>
     </AppDrawer>
   );

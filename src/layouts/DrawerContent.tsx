@@ -8,8 +8,8 @@ import {
   Filter,
   Images,
   LayoutDashboard,
-  ListTodo,
   LogOut,
+  PhoneCall,
 } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
 import { useAuth } from '../navigation/AuthContext';
@@ -17,6 +17,7 @@ import {
   fetchDashboard,
   type DashboardStats,
 } from '../services/dashboardService';
+import { fetchFollowupsBell } from '../services/followupsService';
 import type {
   AppStackParamList,
   MainStackParamList,
@@ -29,6 +30,8 @@ interface Item {
   Icon: React.ComponentType<{ size?: number; color?: string }>;
   /** Which `GET /dashboard` counter to show beside this item, if any. */
   metric?: keyof DashboardStats;
+  /** Shows the `GET /followups/bell` count instead of a dashboard metric. */
+  followUpBadge?: boolean;
 }
 
 const ITEMS: Item[] = [
@@ -46,11 +49,12 @@ const ITEMS: Item[] = [
     metric: 'requests',
   },
   {
-    screen: 'Tasks',
-    label: 'Tasks',
-    hint: 'Open & completed items',
-    Icon: ListTodo,
-    metric: 'tasks',
+    screen: 'FollowUps',
+    label: 'Lead Follow-ups',
+    hint: 'Leads to chase',
+    Icon: PhoneCall,
+    /** Overrides the dashboard metric with the live bell count. */
+    followUpBadge: true,
   },
   {
     screen: 'CompanyMedia',
@@ -73,9 +77,11 @@ export function DrawerContent({ active, onSignOut }: Props) {
   const navigation =
     useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [pendingFollowUps, setPendingFollowUps] = useState<number | null>(null);
 
-  // Re-read the profile from GET /auth/me and the counters from
-  // GET /dashboard each time the drawer opens, so nothing here is stale.
+  // Re-read the profile from GET /auth/me, the counters from GET /dashboard,
+  // and the follow-up badge from GET /followups/bell each time the drawer
+  // opens, so nothing here is stale.
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -85,6 +91,11 @@ export function DrawerContent({ active, onSignOut }: Props) {
       .then(setStats)
       .catch(() => {
         // Leave the last known counts on screen.
+      });
+    fetchFollowupsBell()
+      .then(bell => setPendingFollowUps(bell.count))
+      .catch(() => {
+        // A failed badge poll should not blank the row.
       });
   }, [isOpen, refreshProfile]);
 
@@ -186,7 +197,11 @@ export function DrawerContent({ active, onSignOut }: Props) {
           const discClass = isActive ? 'bg-white' : 'bg-neutral-200';
           const iconColor = isActive ? '#5279AC' : '#8990A8';
           const labelClass = isActive ? 'text-primary-800' : 'text-neutral-900';
-          const count = item.metric && stats ? stats[item.metric] : undefined;
+          const count = item.followUpBadge
+            ? (pendingFollowUps ?? undefined)
+            : item.metric && stats
+              ? stats[item.metric]
+              : undefined;
 
           return (
             <TouchableOpacity

@@ -6,13 +6,13 @@
  */
 
 /** Server origin. The Team API is served from `${API_BASE_URL}/api/team`. */
-export const API_BASE_URL = 'https://example.com';
+export const API_BASE_URL = 'https://franchisepk.com';
 
 /** Base for the employee/team API (see TEAM_API_DOCUMENTATION.md). */
 export const TEAM_API_BASE = `${API_BASE_URL}/api/team`;
 
 /** While true, services return mock fixtures instead of hitting the network. */
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
 /** Simulated network latency for mock fetches (ms). */
 export const MOCK_DELAY_MS = 600;
