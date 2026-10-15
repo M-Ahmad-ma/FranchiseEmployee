@@ -16,6 +16,8 @@ import {
   Link2,
   MapPin,
   RefreshCw,
+  // Trash2 is only referenced by the commented-out delete button.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Trash2,
   Upload,
   Video,
@@ -29,6 +31,7 @@ import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { AlertBanner } from '../../shared/components/AlertBanner';
 import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
+import { MediaViewer } from '../../shared/components/MediaViewer';
 import { SelectField } from '../../shared/components/SelectField';
 import { TextField } from '../../shared/components/TextField';
 import {
@@ -359,17 +362,17 @@ function UploadSheet({
                         <Text className="font-lato text-[11px] text-neutral-600">
                           {file.size ? formatBytes(file.size) : ''}
                         </Text>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={() =>
-                            setFiles(current =>
-                              current.filter((_, i) => i !== index),
-                            )
-                          }
-                          accessibilityRole="button"
-                          accessibilityLabel={`Remove ${file.name}`}>
-                          <Trash2 size={14} color="#6F778E" />
-                        </TouchableOpacity>
+                        {/* <TouchableOpacity */}
+                        {/*   activeOpacity={0.8} */}
+                        {/*   onPress={() => */}
+                        {/*     setFiles(current => */}
+                        {/*       current.filter((_, i) => i !== index), */}
+                        {/*     ) */}
+                        {/*   } */}
+                        {/*   accessibilityRole="button" */}
+                        {/*   accessibilityLabel={`Remove ${file.name}`}> */}
+                        {/*   <Trash2 size={14} color="#6F778E" /> */}
+                        {/* </TouchableOpacity> */}
                       </View>
                     ))}
                   </View>
@@ -457,31 +460,20 @@ const KIND_TONE = {
 
 function MediaTile({
   file,
-  onDelete,
-  deleting,
+  onOpen,
 }: {
   file: CompanyMediaFile;
-  onDelete: () => void;
-  deleting: boolean;
+  onOpen: (file: CompanyMediaFile) => void;
 }) {
   const Icon = KIND_ICON[file.kind];
-
-  const open = () => {
-    if (file.kind === 'location') {
-      void Linking.openURL(file.url);
-      return;
-    }
-    void Linking.openURL(file.url);
-  };
 
   return (
     <View className="bg-white rounded-2xl p-3">
       <TouchableOpacity
         activeOpacity={0.8}
-        onPress={open}
-        className={`rounded-xl overflow-hidden items-center justify-center ${
-          KIND_TONE[file.kind]
-        }`}
+        onPress={() => onOpen(file)}
+        className={`rounded-xl overflow-hidden items-center justify-center ${KIND_TONE[file.kind]
+          }`}
         style={{ height: 104 }}
         accessibilityRole="button"
         accessibilityLabel={`Open ${file.fileName || file.optionName}`}>
@@ -513,19 +505,22 @@ function MediaTile({
         <Text className="font-lato text-[10px] text-neutral-500">
           {file.created || '—'}
         </Text>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          disabled={deleting}
-          onPress={onDelete}
-          className="w-8 h-8 rounded-full bg-neutral-200 items-center justify-center"
-          accessibilityRole="button"
-          accessibilityLabel={`Delete ${file.fileName || file.optionName}`}>
-          {deleting ? (
-            <ActivityIndicator size="small" color="#6F778E" />
-          ) : (
-            <Trash2 size={14} color="#6F778E" />
-          )}
-        </TouchableOpacity>
+        {/* Delete is disabled for now. To restore it, add back the */}
+        {/* `deleting: boolean` and `onDelete: () => void` props on */}
+        {/* MediaTile above and pass them from the call site. */}
+        {/* <TouchableOpacity */}
+        {/*   activeOpacity={0.8} */}
+        {/*   disabled={deleting} */}
+        {/*   onPress={onDelete} */}
+        {/*   className="w-8 h-8 rounded-full bg-neutral-200 items-center justify-center" */}
+        {/*   accessibilityRole="button" */}
+        {/*   accessibilityLabel={`Delete ${file.fileName || file.optionName}`}> */}
+        {/*   {deleting ? ( */}
+        {/*     <ActivityIndicator size="small" color="#6F778E" /> */}
+        {/*   ) : ( */}
+        {/*     <Trash2 size={14} color="#6F778E" /> */}
+        {/*   )} */}
+        {/* </TouchableOpacity> */}
       </View>
     </View>
   );
@@ -543,8 +538,24 @@ export function CompanyMediaScreen() {
   const [files, setFiles] = useState<CompanyMediaFile[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  // Both belong to the delete button, which is commented out in MediaTile.
+  // Kept so re-enabling it is just uncommenting.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [viewing, setViewing] = useState<CompanyMediaFile | null>(null);
+
+  /**
+   * Images and videos open in the in-app viewer. PDFs and Brand Locations have
+   * no native renderer, so those defer to the OS as before.
+   */
+  const openFile = useCallback((file: CompanyMediaFile) => {
+    if (file.kind === 'image' || file.kind === 'video') {
+      setViewing(file);
+      return;
+    }
+    void Linking.openURL(file.url);
+  }, []);
 
   const loadDropdowns = useCallback(async () => {
     setDropdownsLoading(true);
@@ -623,6 +634,7 @@ export function CompanyMediaScreen() {
     setMediaError(null);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const confirmDelete = (file: CompanyMediaFile) => {
     // A brand location row only loses its row — the server leaves the URL alone.
     void (async () => {
@@ -723,13 +735,13 @@ export function CompanyMediaScreen() {
               </Text>
             </View>
 
-            <Button
-              title="Upload"
-              size="sm"
-              disabled={!optionId}
-              icon={<Upload size={14} color="#FFFFFF" />}
-              onPress={() => setUploadOpen(true)}
-            />
+            {/* <Button */}
+            {/*   title="Upload" */}
+            {/*   size="sm" */}
+            {/*   disabled={!optionId} */}
+            {/*   icon={<Upload size={14} color="#FFFFFF" />} */}
+            {/*   onPress={() => setUploadOpen(true)} */}
+            {/* /> */}
           </View>
 
           {!optionId && mediaOptions.length > 0 && (
@@ -765,17 +777,15 @@ export function CompanyMediaScreen() {
             <View className="flex-row flex-wrap gap-3">
               {visibleFiles.map(file => (
                 <View key={file.mediaId} style={{ width: '47.5%' }}>
-                  <MediaTile
-                    file={file}
-                    deleting={deletingId === file.mediaId}
-                    onDelete={() => confirmDelete(file)}
-                  />
+                  <MediaTile file={file} onOpen={openFile} />
                 </View>
               ))}
             </View>
           )}
         </Card>
       ) : null}
+
+      <MediaViewer file={viewing} onClose={() => setViewing(null)} />
 
       <UploadSheet
         visible={uploadOpen}

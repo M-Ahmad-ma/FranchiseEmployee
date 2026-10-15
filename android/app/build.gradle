@@ -92,10 +92,41 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        /**
+         * Dummy signing identity for internal test builds and QA installs.
+         *
+         * NOT for publishing — the Play Store rejects a self-signed key and,
+         * more importantly, this password is in the repository. Create a
+         * private keystore outside version control for any real release.
+         *
+         * Credentials are documented in TESTING_KEYSTORE.md.
+         */
+        testing {
+            storeFile file('testing.keystore')
+            storePassword 'Testing@123'
+            keyAlias 'franchiseemployee-testing'
+            keyPassword 'Testing@123'
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+        }
+        /**
+         * `./gradlew assembleQa` produces a self-contained APK that can be
+         * sideloaded without Metro, signed with the testing key above.
+         *
+         * Named "qa" rather than "testing" because Gradle reserves any build
+         * type starting with "test" for its own source sets and rejects it.
+         */
+        qa {
+            // debuggable is left off on purpose so the JS bundle is embedded,
+            // which is what makes the APK work without a packager running.
+            initWith debug
+            signingConfig signingConfigs.testing
+            matchingFallbacks = ['debug']
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
         release {
             // Caution! In production, you need to generate your own keystore file.

@@ -31,7 +31,7 @@ local.properties
 *.iml
 *.hprof
 .cxx/
-*.keystore
+*.keystor
 !debug.keystore
 .kotlin/
 
@@ -40,6 +40,9 @@ local.properties
 node_modules/
 npm-debug.log
 yarn-error.log
+BUILD_AND_RUN.md
+TESTING_KEYSTORE.md
+android/app/testing.keystore 
 
 # fastlane
 #

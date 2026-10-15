@@ -59,6 +59,18 @@ let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export const hasSession = () => sessionCookie !== null;
 
+/**
+ * The current cookie as a header value, or `{}` when signed out.
+ *
+ * `fetch` gets this automatically via the replayed `Cookie` header, but
+ * `<Image source>` and `react-native-video` issue their own requests and do not
+ * — so a media file behind the session would 401 without this. Only works if
+ * the server actually requires auth for the file; harmless when it does not.
+ */
+export function getSessionHeaders(): Record<string, string> {
+  return sessionCookie ? { Cookie: sessionCookie } : {};
+}
+
 /** Epoch ms at which the current session lapses — 0 when signed out. */
 export const getSessionExpiresAt = () => sessionExpiresAt;
 

@@ -39,6 +39,12 @@ jest.mock('react-native-image-picker', () => ({
   launchImageLibrary: jest.fn(async () => ({ didCancel: true })),
 }));
 
+// Native video surface; the viewer only asserts on its props.
+jest.mock('react-native-video', () => {
+  const Video = () => null;
+  return { __esModule: true, default: Video };
+});
+
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(async () => []),
   types: {},

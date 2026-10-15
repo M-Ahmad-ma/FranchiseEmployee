@@ -16,6 +16,20 @@ The picker libraries need a real device or emulator — the mocks in
 |---|---|---|
 | `react-native-image-picker` | Company Media uploads, lead info images | yes |
 | `@react-native-documents/picker` | PDF selection for Company Media | yes |
+| `react-native-video` | In-app video playback in Company Media | yes |
+
+## Building a test APK
+
+A dummy signing key for internal builds lives at `android/app/testing.keystore`,
+with credentials and build commands in
+[`TESTING_KEYSTORE.md`](./TESTING_KEYSTORE.md).
+
+```sh
+cd android && ./gradlew assembleQa
+```
+
+Use this rather than `assembleDebug` when you need an APK that runs without
+Metro. Do not publish anything signed with it — the password is in the repo.
 
 Adding either one invalidates the native build; rerun `pod install` (iOS) or
 rebuild the app (Android). Both resolve a TurboModule at import time, which is
