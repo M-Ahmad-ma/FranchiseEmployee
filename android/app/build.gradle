@@ -119,7 +119,7 @@ android {
          * Named "qa" rather than "testing" because Gradle reserves any build
          * type starting with "test" for its own source sets and rejects it.
          */
-        qa {
+        release {
             // debuggable is left off on purpose so the JS bundle is embedded,
             // which is what makes the APK work without a packager running.
             initWith debug
@@ -127,12 +127,25 @@ android {
             matchingFallbacks = ['debug']
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+
+            /**
+             * Required, or the manifest merger fails on
+             * `android:usesCleartextTraffic="${usesCleartextTraffic}"`.
+             *
+             * React Native's Gradle plugin only sets this placeholder for its
+             * own debug/release/debugOptimized types, and `initWith` does not
+             * copy placeholders across — so a custom type has to supply its
+             * own. Matches debug: true, so a QA build can reach a plain-HTTP
+             * test server if one is used. Must be "false" for any real release.
+             */
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }

@@ -26,11 +26,12 @@ export async function fetchDashboard(): Promise<DashboardStats> {
   const data = await get<{ stats?: Partial<DashboardStats> }>('dashboard');
   const stats = data?.stats;
 
+
   return {
-    tasks: pickNumber(stats ?? {}, ['tasks']),
-    meetings: pickNumber(stats ?? {}, ['meetings']),
-    requests: pickNumber(stats ?? {}, ['requests']),
-    companies: pickNumber(stats ?? {}, ['companies']),
-    properties: pickNumber(stats ?? {}, ['properties']),
+    tasks: pickNumber(stats ?? {}, ['tasks', 'task']),
+    meetings: pickNumber(stats ?? {}, ['meetings', 'meeting']),
+    requests: pickNumber(stats ?? {}, ['requests', 'request']),
+    companies: pickNumber(stats ?? {}, ['companies', 'company']),
+    properties: pickNumber(stats ?? {}, ['properties', 'Properties', 'property']),
   };
 }

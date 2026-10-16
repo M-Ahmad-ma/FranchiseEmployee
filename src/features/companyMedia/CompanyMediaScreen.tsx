@@ -628,6 +628,7 @@ export function CompanyMediaScreen() {
     [files, optionId],
   );
 
+
   const reset = () => {
     setCompanyId(undefined);
     setOptionId(undefined);

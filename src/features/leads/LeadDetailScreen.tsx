@@ -17,8 +17,10 @@ import {
   Camera,
   CheckCircle2,
   Mail,
+  MapPin,
   MessageSquare,
   Phone,
+  TrendingUp,
 } from 'lucide-react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
@@ -63,11 +65,7 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-/**
- * Everything the app knows about one lead: the request block, the posting
- * company, the employee vCard, the comment thread, the follow-up history, and
- * the images attached via `POST /leads/info`.
- */
+
 export function LeadDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -82,19 +80,32 @@ export function LeadDetailScreen() {
   const [scheduling, setScheduling] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [busyFollowUpId, setBusyFollowUpId] = useState<string | null>(null);
+  const [followupsError, setFollowupsError] = useState(false);
+
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFollowupsError(false);
     try {
-      const [nextDetail, nextFollowups] = await Promise.all([
+      const [detailResult, followupResult] = await Promise.allSettled([
         fetchLeadDetail(leadId),
         fetchLeadFollowups(leadId),
       ]);
-      setDetail(nextDetail);
-      setFollowups(nextFollowups);
-    } catch {
-      setError('Something went wrong. Please try again.');
+
+      if (detailResult.status === 'fulfilled') {
+        setDetail(detailResult.value);
+      } else {
+        setDetail(null);
+        setError('Something went wrong. Please try again.');
+      }
+
+      if (followupResult.status === 'fulfilled') {
+        setFollowups(followupResult.value);
+      } else {
+        setFollowups([]);
+        setFollowupsError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -124,24 +135,19 @@ export function LeadDetailScreen() {
     }
   }, []);
 
-  const detailFields = useMemo(
-    () =>
-      Object.entries(detail?.detail ?? {})
-        .filter(([key, value]) => key !== 'e_id' && value !== '')
-        .map(([key, value]) => ({
-          key,
-          label: detailLabel[key] ?? key.replace(/_/g, ' '),
-          value,
-        })),
-    [detail],
-  );
-
   const title = investor || detail?.investor || 'Lead';
+
+  // The list row is passed in for a fast first paint; the fetched detail wins
+  // wherever it has a value, since the capture form can leave the row's own
+  // phone empty.
+  const phoneNumber = detail?.phone || phone;
+
+  console.log(detail)
 
   return (
     <DashboardLayout
       title={title}
-      subtitle={company || detail?.company?.name || 'Lead detail'}
+      subtitle={company || detail?.companyName || detail?.company?.name || 'Lead detail'}
       onRefresh={load}
       refreshing={loading}
       showBell={false}>
@@ -175,18 +181,40 @@ export function LeadDetailScreen() {
           Contact
         </Text>
 
-        <View className="flex-row items-center gap-2 mb-2">
-          <Phone size={15} color="#5279AC" />
-          <Text className="font-lato text-sm text-neutral-900">
-            {detail?.phone || phone || '—'}
-          </Text>
-        </View>
+        {/* A capture form can leave either channel blank, so each row only
+            renders once it has something to show. */}
+        {phoneNumber ? (
+          <View className="flex-row items-center gap-2 mb-2">
+            <Phone size={15} color="#5279AC" />
+            <Text className="font-lato text-sm text-neutral-900">
+              {phoneNumber}
+            </Text>
+          </View>
+        ) : null}
+
+        {detail?.email ? (
+          <View className="flex-row items-center gap-2 mb-2">
+            <Mail size={15} color="#5279AC" />
+            <Text className="font-lato text-sm text-neutral-900 flex-1">
+              {detail.email}
+            </Text>
+          </View>
+        ) : null}
 
         {detail?.date ? (
           <View className="flex-row items-center gap-2 mb-2">
             <CalendarPlus size={15} color="#5279AC" />
             <Text className="font-lato text-sm text-neutral-900">
               {detail.date}
+            </Text>
+          </View>
+        ) : null}
+
+        {detail?.city ? (
+          <View className="flex-row items-center gap-2 mb-2">
+            <MapPin size={15} color="#5279AC" />
+            <Text className="font-lato text-sm text-neutral-900">
+              {detail.city}
             </Text>
           </View>
         ) : null}
@@ -198,25 +226,33 @@ export function LeadDetailScreen() {
           </Text>
         </View>
 
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row items-center gap-2 mb-2">
           <MessageSquare size={15} color="#5279AC" />
           <Text className="font-lato text-sm text-neutral-900">
             Meeting: {meetingTypeLabel(detail?.meetingType ?? '') || '—'}
           </Text>
         </View>
+
+        <View className="flex-row items-center gap-2">
+          <TrendingUp size={15} color="#5279AC" />
+          <Text className="font-lato text-sm text-neutral-900">
+            Status: {detail?.pipeline || '—'}
+          </Text>
+        </View>
       </Card>
 
-      {/* ---------- Leads detail ---------- */}
-      {detailFields.length > 0 ? (
+      {/* ---------- Investor message ---------- */}
+      {detail?.message ? (
         <Card className="bg-white rounded-2xl p-4 mt-4">
           <Text className="font-lato-bold text-base text-neutral-900 mb-2">
-            Details
+            Investor message
           </Text>
-          {detailFields.map(field => (
-            <Field key={field.key} label={field.label} value={field.value} />
-          ))}
+          <Text className="font-lato text-sm text-neutral-700 leading-5">
+            {detail.message}
+          </Text>
         </Card>
       ) : null}
+
 
       {/* ---------- Company ---------- */}
       {detail?.company ? (
@@ -331,7 +367,10 @@ export function LeadDetailScreen() {
 
         {followups.length === 0 ? (
           <Text className="font-lato text-xs text-neutral-600 leading-5">
-            Nothing scheduled for this lead.
+            {/* A failed read must not read as an empty history. */}
+            {followupsError
+              ? 'Could not load follow-ups.'
+              : 'Nothing scheduled for this lead.'}
           </Text>
         ) : (
           followups.map((followUp, index) => {
@@ -402,6 +441,24 @@ export function LeadDetailScreen() {
             </View>
           ))}
         </Card>
+      ) : null}
+
+
+      {detail?.detail?.img_path ? (
+        <View
+          style={{
+            shadowColor: "#000",
+            elevation: 3
+          }}
+        >
+          <Image
+            source={{ uri: `https://franchisepk.com/${detail.detail.img_path}` }}
+            style={{ width: '100%', height: 200, elevation: 3, shadowColor: "#000" }}
+            className='rounded-2xl mt-4'
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        </View>
       ) : null}
 
       <FollowUpSheet

@@ -30,9 +30,6 @@ import {
   type FollowUp,
 } from '../../services/followupsService';
 
-/* -------------------------------------------------------------------------- */
-/*  Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
 
 const heroShadow: StyleProp<ViewStyle> = {
   shadowColor: '#001C39',
@@ -173,7 +170,7 @@ export function HomeScreen() {
 
   const now = new Date();
 
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>();
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [followUpCount, setFollowUpCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -187,6 +184,7 @@ export function HomeScreen() {
         fetchDashboard(),
         fetchFollowupsBell(3),
       ]);
+
       setStats(dash);
       setFollowUps(bell.followups);
       setFollowUpCount(bell.count);
@@ -205,6 +203,7 @@ export function HomeScreen() {
     }, [load]),
   );
 
+
   const preview = followUps;
 
   const metrics: { label: string; value: number; dot: string }[] = [
@@ -215,11 +214,13 @@ export function HomeScreen() {
     },
     { label: 'Requests', value: stats?.requests ?? 0, dot: 'bg-primary-700' },
     {
-      label: 'Companies',
-      value: stats?.companies ?? 0,
+      label: 'meetings',
+      value: stats?.meetings ?? 0,
       dot: 'bg-tertiary-600',
     },
   ];
+
+
 
   return (
     <DashboardLayout

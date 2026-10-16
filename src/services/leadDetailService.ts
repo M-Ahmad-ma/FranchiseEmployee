@@ -54,7 +54,14 @@ export interface LeadDetail {
   leadId: string;
   investor: string;
   phone: string;
+  /** Only some lead sources collect an address alongside the phone. */
+  email: string;
+  /** Free-text `e_message` the investor typed into the capture form. */
+  message: string;
   date: string;
+  city: string;
+  /** Brand/company name as recorded on the request row. */
+  companyName: string;
   dealDone: string;
   meetingType: string;
   pipeline: string;
@@ -65,6 +72,25 @@ export interface LeadDetail {
   company: LeadCompany | null;
   vcard: LeadVCard | null;
   images: LeadImage[];
+}
+
+/**
+ * `data` as the three detail routes return it.
+ *
+ * `requests`, `comments`, `leads_detail`, `categories` and `lead_id` come back on
+ * every route, including the shortest one; `company` and `login` only arrive
+ * when the matching path segments are supplied. That is why the whole payload is
+ * spread into the normalizer instead of just the request row — the comment thread
+ * and the free-form detail fields come from the same response as the row itself.
+ */
+interface LeadDetailPayload {
+  requests?: Record<string, unknown>;
+  comments?: Record<string, unknown>[];
+  leads_detail?: Record<string, unknown>;
+  categories?: unknown[];
+  lead_id?: string | number;
+  company?: Record<string, unknown>;
+  login?: Record<string, unknown>;
 }
 
 function normalizeImage(row: Record<string, unknown>): LeadImage {
@@ -88,6 +114,37 @@ function normalizeComment(row: Record<string, unknown>): LeadComment {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Payload shapes                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Collapses a payload that may be a row or a one-element array into a row.
+ *
+ * `requests` and `leads_detail` are documented as objects but arrive as
+ * single-element arrays. Reading keys straight off the array yields undefined
+ * for every field, which renders as a blank screen rather than an error — so
+ * both shapes are accepted here instead.
+ */
+function firstRow(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    return (value[0] ?? {}) as Record<string, unknown>;
+  }
+  return (value && typeof value === 'object'
+    ? value
+    : {}) as Record<string, unknown>;
+}
+
+/** Same tolerance for the list payloads, which may also arrive unwrapped. */
+function toRows(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value as Record<string, unknown>[];
+  }
+  return value && typeof value === 'object'
+    ? [value as Record<string, unknown>]
+    : [];
+}
+
 /**
  * Every scalar out of a row, so `leads_detail` can be rendered as a list
  * without this file needing to know the server's column names.
@@ -109,7 +166,7 @@ function normalizeLeadDetail(
   leadId: string,
   data: Record<string, unknown>,
 ): LeadDetail {
-  const lead = (data?.requests ?? {}) as Record<string, unknown>;
+  const lead = firstRow(data?.requests);
   const company = data?.company as Record<string, unknown> | undefined;
   const vcard = data?.login as Record<string, unknown> | undefined;
 
@@ -120,35 +177,38 @@ function normalizeLeadDetail(
     leadId,
     investor: pickString(lead, ['investor', 'e_name']) || `${first} ${last}`.trim(),
     phone: pickString(lead, ['e_phonenumber', 'u_contact', 'contact']),
+    // A lead can be captured from a web form that only collected an address.
+    email: pickString(lead, ['e_emailaddress', 'u_email', 'email']),
+    message: pickString(lead, ['e_message', 'message', 'req_message']),
     date: pickString(lead, ['e_date', 'date']),
+    city:
+      pickString(lead, ['name', 'city_name', 'city']) ||
+      pickString(lead, ['e_city']),
+    companyName: pickString(lead, ['co_name', 'lead_name', 'company_name']),
     dealDone: pickString(lead, ['deal_done']),
     meetingType: pickString(lead, ['meeting_type']),
     pipeline: pickString(lead, ['pipeline']),
     comment: pickString(lead, ['req_comment', 'comment']),
-    detail: scalarFields(data?.leads_detail as Record<string, unknown>),
-    comments: (
-      (data?.comments as Record<string, unknown>[] | undefined) ?? []
-    ).map(normalizeComment),
+    detail: scalarFields(firstRow(data?.leads_detail)),
+    comments: toRows(data?.comments).map(normalizeComment),
     company: company
       ? {
-          id: pickString(company, ['co_id', 'id']),
-          name: pickString(company, ['co_name', 'name']),
-          address: pickString(company, ['co_address', 'address']),
-          contact: pickString(company, ['co_contact', 'contact']),
-          website: pickString(company, ['co_website', 'website']),
-        }
+        id: pickString(company, ['co_id', 'id']),
+        name: pickString(company, ['co_name', 'name']),
+        address: pickString(company, ['co_address', 'address']),
+        contact: pickString(company, ['co_contact', 'contact']),
+        website: pickString(company, ['co_website', 'website']),
+      }
       : null,
     vcard: vcard
       ? {
-          empId: pickString(vcard, ['emp_id', 'u_id']),
-          name: pickString(vcard, ['emp_name', 'name']),
-          contact: pickString(vcard, ['emp_contact', 'contact']),
-          email: pickString(vcard, ['emp_email', 'email']),
-        }
+        empId: pickString(vcard, ['emp_id', 'u_id']),
+        name: pickString(vcard, ['emp_name', 'name']),
+        contact: pickString(vcard, ['emp_contact', 'contact']),
+        email: pickString(vcard, ['emp_email', 'email']),
+      }
       : null,
-    images: (
-      (data?.lead_media as Record<string, unknown>[] | undefined) ?? []
-    ).map(normalizeImage),
+    images: toRows(data?.lead_media).map(normalizeImage),
   };
 }
 
@@ -172,10 +232,10 @@ export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
     return result;
   }
 
-  const lead = await get<{ requests?: Record<string, unknown> }>(
+  const base = await get<LeadDetailPayload>(
     `requests/${encodeURIComponent(leadId)}`,
   );
-  const row = (lead?.requests ?? {}) as Record<string, unknown>;
+  const row = firstRow(base?.requests);
 
   const path = (id: string) =>
     `requests/${encodeURIComponent(leadId)}/company/${encodeURIComponent(id)}`;
@@ -183,19 +243,26 @@ export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
   const companyId = pickString(row, ['e_co_id', 'co_id']);
   const empId = pickString(row, ['employee_id', 'emp_id']);
 
-  // One more call for the company + vCard blocks, skipped when the lead has
-  // neither — the short route already returned everything it can.
-  const extras =
-    companyId && empId
-      ? await get<Record<string, unknown>>(`${path(companyId)}/emp/${empId}`)
-      : companyId
-        ? await get<Record<string, unknown>>(path(companyId))
-        : {};
+  let extras: Record<string, unknown> = {};
+  try {
+    extras =
+      companyId && empId
+        ? await get<Record<string, unknown>>(`${path(companyId)}/emp/${empId}`)
+        : companyId
+          ? await get<Record<string, unknown>>(path(companyId))
+          : {};
+  } catch {
+    extras = {};
+  }
 
+  // `base` carries the comment thread and the `leads_detail` fields, which the
+  // short route always returns. `requests` is pinned last so the row the ids
+  // were resolved from is the one that gets normalized.
   return normalizeLeadDetail(leadId, {
-    requests: row,
+    ...base,
     ...extras,
-    lead_media: extras.lead_media ?? [],
+    requests: row,
+    lead_media: (extras.lead_media as Record<string, unknown>[] | undefined) ?? [],
   });
 }
 
