@@ -83,6 +83,7 @@ const columns: TableColumn<LeadFilterRow>[] = [
   },
 ];
 
+
 export function RequestsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -94,18 +95,26 @@ export function RequestsScreen() {
   const [page, setPage] = useState(1);
 
   const [dropdowns, setDropdowns] = useState<LeadFilterDropdowns>(EMPTY_DROPDOWNS);
-  const [dropdownsLoading, setDropdownsLoading] = useState(true);
+  // Starts false so the first paint is not three spinners over an empty form;
+  // the fetch begins on focus and the fields show their spinner from there.
+  const [dropdownsLoading, setDropdownsLoading] = useState(false);
   const [rows, setRows] = useState<LeadFilterRow[]>([]);
   const [meta, setMeta] = useState<PageMeta>(EMPTY_META);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [dropdownsFailed, setDropdownsFailed] = useState(false);
+
   const loadDropdowns = useCallback(async () => {
     setDropdownsLoading(true);
+    setDropdownsFailed(false);
     try {
       setDropdowns(await fetchLeadFilterDropdowns());
     } catch {
-      // The filter still works without pickers; leave them empty.
+      // The list and the filters still work without pickers, so this is not a
+      // page-level error — but the three fields need to say why they are empty
+      // rather than looking unpopulated by accident.
+      setDropdownsFailed(true);
     } finally {
       setDropdownsLoading(false);
     }
@@ -167,7 +176,6 @@ export function RequestsScreen() {
     void load();
   };
 
-  console.log(filters)
 
   return (
     <DashboardLayout
@@ -178,29 +186,53 @@ export function RequestsScreen() {
       refreshing={loading}>
       {/* ---------- Filters ---------- */}
       <Card className="bg-white rounded-2xl p-4">
-        <View className="flex-row items-center gap-2 mb-4">
-          <Filter size={18} color="#5279AC" />
-          <Text className="font-lato-bold text-lg text-neutral-900">
-            Filters
-          </Text>
+        <View className="flex-row items-center justify-between gap-2 mb-4">
+          <View className="flex-row items-center gap-2">
+            <Filter size={18} color="#5279AC" />
+            <Text className="font-lato-bold text-lg text-neutral-900">
+              Filters
+            </Text>
+          </View>
+          {dropdownsLoading ? (
+            <View className="flex-row items-center gap-2">
+              <ActivityIndicator size="small" color="#8990A8" />
+              <Text className="font-lato text-xs text-neutral-500">
+                Loading options
+              </Text>
+            </View>
+          ) : null}
         </View>
+
+        {/* Covers all three pickers at once, so the reason they are empty is
+            stated in one place rather than inferred from three empty fields. */}
+        {dropdownsFailed ? (
+          <View className="mb-4">
+            <AlertBanner message="Could not load filter options. Pull to refresh to try again." />
+          </View>
+        ) : null}
 
         <View className="flex-row flex-wrap gap-4">
           <SelectField
             label="City"
-            placeholder={dropdownsLoading ? 'Loading cities…' : 'Select City'}
+            placeholder="Select City"
             value={filters.city}
             options={dropdowns.cities}
             onChange={v => setFilter('city', v)}
             style={fieldStyle}
+            loading={dropdownsLoading}
+            searchable
+            searchPlaceholder="Search cities"
           />
           <SelectField
             label="Brand"
-            placeholder={dropdownsLoading ? 'Loading brands…' : 'Select Brand'}
+            placeholder="Select Brand"
             value={filters.brand}
             options={dropdowns.companies}
             onChange={v => setFilter('brand', v)}
             style={fieldStyle}
+            loading={dropdownsLoading}
+            searchable
+            searchPlaceholder="Search brands"
           />
           <TextField
             label="Investor"
@@ -234,13 +266,14 @@ export function RequestsScreen() {
           />
           <SelectField
             label="Pipeline Status"
-            placeholder={
-              dropdownsLoading ? 'Loading statuses…' : 'All Statuses'
-            }
+            placeholder="All Statuses"
             value={filters.pipeline}
             options={pipelineOptions}
             onChange={v => setFilter('pipeline', v)}
             style={fieldStyle}
+            loading={dropdownsLoading}
+            searchable
+            searchPlaceholder="Search statuses"
           />
           <DateField
             label="Date From"
@@ -332,6 +365,7 @@ export function RequestsScreen() {
                   investor: row.investor,
                   phone: row.phone,
                   company: row.brand,
+                  e_co_id: row.e_co_id
                 })
               }
             />

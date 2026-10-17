@@ -237,6 +237,8 @@ export function FollowUpSheet({
                   options={leadOptions}
                   onChange={setLeadId}
                   modalTitle="Select a lead"
+                  searchable
+                  searchPlaceholder="Search by name or phone"
                 />
               )}
 

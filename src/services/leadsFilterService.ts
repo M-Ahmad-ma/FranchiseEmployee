@@ -8,6 +8,7 @@ import {
   LEAD_FILTER_META_FIXTURE,
   LEAD_FILTER_ROWS_FIXTURE,
 } from './mockFixtures';
+import { pick } from '@react-native-documents/picker';
 
 /**
  * GET /api/team/leads/filter and its dropdown sources.
@@ -43,6 +44,8 @@ export interface LeadFilterParams {
 
 export interface LeadFilterRow {
   id: string;
+  /** Raw company id, `e_co_id`. Same value as `brandId`. */
+  e_co_id: string;
   investor: string;
   phone: string;
   cityId: string;
@@ -118,6 +121,10 @@ function normalizeLead(row: Record<string, unknown>): LeadFilterRow {
 
   return {
     id: pickString(row, ['e_id', 'id', 'lead_id']),
+    // Same value as `brandId` below. The detail route is only reachable from
+    // this row and needs the raw company id — it cannot recover one from the
+    // display name — so the snake_case spelling the server uses is kept too.
+    e_co_id: pickString(row, ['e_co_id', 'co_id']),
     investor: pickString(row, ['investor', 'name']) || `${first} ${last}`.trim(),
     phone: pickString(row, ['e_phonenumber', 'u_contact', 'phone', 'contact']),
     cityId: pickString(row, ['e_city']),
@@ -260,6 +267,7 @@ export async function fetchFilteredLeads(
       `leads/filter ${JSON.stringify(toQuery(params))}`,
       result.data.leads,
     );
+
     return result;
   }
 
@@ -268,6 +276,8 @@ export async function fetchFilteredLeads(
     leads?: Record<string, unknown>[];
     total?: number;
   }>('leads/filter', query);
+
+  console.log(data, "data")
 
   return {
     data: {

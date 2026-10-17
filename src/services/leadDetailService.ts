@@ -66,8 +66,6 @@ export interface LeadDetail {
   meetingType: string;
   pipeline: string;
   comment: string;
-  /** Free-form `leads_detail` fields, kept as-is so nothing is dropped. */
-  detail: Record<string, string>;
   comments: LeadComment[];
   company: LeadCompany | null;
   vcard: LeadVCard | null;
@@ -109,7 +107,9 @@ function normalizeComment(row: Record<string, unknown>): LeadComment {
   return {
     id: pickString(row, ['comment_id', 'id']),
     comment: pickString(row, ['comment', 'text', 'description']),
-    created: pickString(row, ['created', 'date_created']),
+    // Lead comments stamp their column `comment_date`, unlike everything else
+    // in this API which uses a bare `created`.
+    created: pickString(row, ['comment_date', 'created', 'date_created']),
     employee: pickString(row, ['emp_name', 'employee', 'name']),
   };
 }
@@ -145,23 +145,6 @@ function toRows(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
-/**
- * Every scalar out of a row, so `leads_detail` can be rendered as a list
- * without this file needing to know the server's column names.
- */
-function scalarFields(row: Record<string, unknown> | undefined) {
-  const fields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(row ?? {})) {
-    if (value !== null && value !== undefined && typeof value !== 'object') {
-      const text = String(value).trim();
-      if (text !== '') {
-        fields[key] = text;
-      }
-    }
-  }
-  return fields;
-}
-
 function normalizeLeadDetail(
   leadId: string,
   data: Record<string, unknown>,
@@ -189,7 +172,6 @@ function normalizeLeadDetail(
     meetingType: pickString(lead, ['meeting_type']),
     pipeline: pickString(lead, ['pipeline']),
     comment: pickString(lead, ['req_comment', 'comment']),
-    detail: scalarFields(firstRow(data?.leads_detail)),
     comments: toRows(data?.comments).map(normalizeComment),
     company: company
       ? {
@@ -208,7 +190,11 @@ function normalizeLeadDetail(
         email: pickString(vcard, ['emp_email', 'email']),
       }
       : null,
-    images: toRows(data?.lead_media).map(normalizeImage),
+    // `leads_detail` is `Admin_model->get_leads_detail($id)` — the rows
+    // `POST /leads/info` writes, so it holds the lead's attached images. The
+    // documented key is `leads_detail`; `lead_media` is kept as a fallback for
+    // the older mock fixture shape.
+    images: toRows(data?.leads_detail ?? data?.lead_media).map(normalizeImage),
   };
 }
 
@@ -221,7 +207,7 @@ function normalizeLeadDetail(
  *
  * Set USE_MOCK to false to hit the real endpoint.
  */
-export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
+export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<LeadDetail> {
   if (USE_MOCK) {
     await delay();
     const result = normalizeLeadDetail(
@@ -237,11 +223,13 @@ export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
   );
   const row = firstRow(base?.requests);
 
-  const path = (id: string) =>
-    `requests/${encodeURIComponent(leadId)}/company/${encodeURIComponent(id)}`;
+  const path = (e_co_id: string) =>
+    `requests/${encodeURIComponent(leadId)}/company/${encodeURIComponent(e_co_id)}`;
 
   const companyId = pickString(row, ['e_co_id', 'co_id']);
   const empId = pickString(row, ['employee_id', 'emp_id']);
+
+  console.log(row)
 
   let extras: Record<string, unknown> = {};
   try {
@@ -255,14 +243,15 @@ export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
     extras = {};
   }
 
-  // `base` carries the comment thread and the `leads_detail` fields, which the
-  // short route always returns. `requests` is pinned last so the row the ids
-  // were resolved from is the one that gets normalized.
+  console.log(extras, "extras")
+
+  // `base` carries the comment thread and the attached images, which the short
+  // route always returns. `requests` is pinned last so the row the ids were
+  // resolved from is the one that gets normalized.
   return normalizeLeadDetail(leadId, {
     ...base,
     ...extras,
     requests: row,
-    lead_media: (extras.lead_media as Record<string, unknown>[] | undefined) ?? [],
   });
 }
 

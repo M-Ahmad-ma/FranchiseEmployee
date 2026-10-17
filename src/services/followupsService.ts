@@ -12,19 +12,32 @@ import { logMock } from './mockLogger';
  * outstanding follow-up, so the app no longer guesses.
  */
 
+/**
+ * Normalized follow-up row.
+ *
+ * This mirrors exactly what `normalizeFollowUp` emits — camelCase, with the
+ * server's `is_done` "0"/"1" resolved into a `done`/`pending` status. The
+ * screens read these names, so the two must not drift apart: a mismatch here
+ * silently yields `undefined` at runtime, because Metro strips types and
+ * nothing catches it until a screen reads a field that was never emitted.
+ */
 export interface FollowUp {
   id: string;
   leadId: string;
+  /** `e_firstname` + `e_lastname`, joined. */
   investor: string;
   phone: string;
+  /** Company id (`e_co_id`) — the follow-up rows carry no company name. */
   company: string;
   city: string;
-  /** `YYYY-MM-DD` as sent by the server. */
+  /** `followup_date`, `YYYY-MM-DD` */
   date: string;
-  /** `HH:mm`, 24-hour. */
+  /** `followup_time`, `HH:mm` 24h */
   time: string;
   comment: string;
+  /** `done` when `is_done` is "1", `pending` when "0", else the raw value. */
   status: string;
+  /** `created_at` */
   created: string;
 }
 
@@ -51,17 +64,23 @@ export type FollowUpStatusFilter = 'active' | 'all' | string;
  * empty string so a rename degrades to a blank cell, not a crash.
  */
 function normalizeFollowUp(row: Record<string, unknown>): FollowUp {
+  const first = pickString(row, ['e_firstname', 'investor', 'e_name', 'name']);
+  const last = pickString(row, ['e_lastname']);
+  const investor = [first, last].filter(Boolean).join(' ').trim();
+
+  const isDone = pickString(row, ['is_done', 'status', 'followup_status']);
+
   return {
     id: pickString(row, ['followup_id', 'id', 'fup_id']),
     leadId: pickString(row, ['lead_id', 'e_id', 'request_id']),
-    investor: pickString(row, ['investor', 'e_name', 'name']),
+    investor,
     phone: pickString(row, ['phone', 'contact', 'e_phonenumber']),
-    company: pickString(row, ['company', 'co_name', 'brand']),
+    company: pickString(row, ['company', 'co_name', 'brand', 'e_co_id']),
     city: pickString(row, ['city', 'city_name']),
     date: pickString(row, ['followup_date', 'date', 'follow_up_date']),
     time: pickString(row, ['followup_time', 'time', 'follow_up_time']),
     comment: pickString(row, ['comment', 'remark', 'description']),
-    status: pickString(row, ['status', 'followup_status']),
+    status: isDone === '1' ? 'done' : isDone === '0' ? 'pending' : isDone,
     created: pickString(row, ['created', 'date_created', 'created_at']),
   };
 }
@@ -84,9 +103,9 @@ export async function fetchFollowups(
       (status === 'all'
         ? FOLLOWUPS_FIXTURE
         : FOLLOWUPS_FIXTURE.filter(row => row.status === 'active')) as Record<
-        string,
-        unknown
-      >[],
+          string,
+          unknown
+        >[],
     );
     logMock(`followups?status=${status}`, rows);
     return rows;

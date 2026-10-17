@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -20,6 +20,7 @@ import {
   MapPin,
   MessageSquare,
   Phone,
+  Rows,
   TrendingUp,
 } from 'lucide-react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
@@ -42,35 +43,19 @@ import { dealDoneLabel, meetingTypeLabel } from '../../services/leadsFilterServi
 import { ApiError } from '../../services/httpClient';
 import type { RootStackParamList } from '../../navigation/types';
 
-const detailLabel: Record<string, string> = {
-  investor_budget: 'Budget',
-  investment_range: 'Investment range',
-  business_type: 'Business type',
-  preferred_city: 'Preferred city',
-  notes: 'Notes',
-};
-
 const circleButton =
   'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
-
-/** One caption/value row, rendered for every scalar the server returned. */
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row py-2">
-      <Text className="font-lato text-xs text-neutral-600 w-36">{label}</Text>
-      <Text className="font-lato-bold text-sm text-neutral-900 flex-1">
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 
 export function LeadDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'LeadDetail'>>();
-  const { leadId, investor, phone, company } = route.params;
+  const { leadId, investor, phone, company, e_co_id } = route.params;
+  // Only the Leads screen passes this. The other three entry points (home
+  // preview, follow-ups list, bell) reach a lead without it, and the detail
+  // route still works — the company block is optional. Pass '' rather than
+  // `undefined` so `fetchLeadDetail` gets the string its signature asks for.
+  const companyId = e_co_id ?? '';
 
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [followups, setFollowups] = useState<FollowUp[]>([]);
@@ -83,13 +68,14 @@ export function LeadDetailScreen() {
   const [followupsError, setFollowupsError] = useState(false);
 
 
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setFollowupsError(false);
     try {
       const [detailResult, followupResult] = await Promise.allSettled([
-        fetchLeadDetail(leadId),
+        fetchLeadDetail(leadId, companyId),
         fetchLeadFollowups(leadId),
       ]);
 
@@ -97,6 +83,8 @@ export function LeadDetailScreen() {
         setDetail(detailResult.value);
       } else {
         setDetail(null);
+
+        console.warn('lead detail failed', detailResult.reason);
         setError('Something went wrong. Please try again.');
       }
 
@@ -137,12 +125,8 @@ export function LeadDetailScreen() {
 
   const title = investor || detail?.investor || 'Lead';
 
-  // The list row is passed in for a fast first paint; the fetched detail wins
-  // wherever it has a value, since the capture form can leave the row's own
-  // phone empty.
-  const phoneNumber = detail?.phone || phone;
 
-  console.log(detail)
+  const phoneNumber = detail?.phone || phone;
 
   return (
     <DashboardLayout
@@ -441,24 +425,6 @@ export function LeadDetailScreen() {
             </View>
           ))}
         </Card>
-      ) : null}
-
-
-      {detail?.detail?.img_path ? (
-        <View
-          style={{
-            shadowColor: "#000",
-            elevation: 3
-          }}
-        >
-          <Image
-            source={{ uri: `https://franchisepk.com/${detail.detail.img_path}` }}
-            style={{ width: '100%', height: 200, elevation: 3, shadowColor: "#000" }}
-            className='rounded-2xl mt-4'
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-        </View>
       ) : null}
 
       <FollowUpSheet

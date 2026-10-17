@@ -248,26 +248,32 @@ export const LEAD_DETAIL_FIXTURE = {
     pipeline: '2',
     req_comment: 'Called, will follow up',
   },
-  leads_detail: {
-    e_id: '1421',
-    investor_budget: '4500000',
-    investment_range: '40L - 50L',
-    business_type: 'Food & Beverage',
-    preferred_city: 'Lahore',
-    notes: 'Wants three outlets within two years.',
-  },
+  /** Rows already attached to the lead via `POST /leads/info`. */
+  leads_detail: [
+    {
+      id: '6658',
+      lead_id: '1421',
+      title: 'Storefront',
+      img_path: 'public/admin/leads/a1b2c3d4e5.jpg',
+      created_at: '12-Oct-2026 09:00:00',
+    },
+  ],
   comments: [
     {
       comment_id: '201',
+      lead_id: '1421',
       comment: 'Spoke about the royalty structure.',
-      created: '12-Oct-2026',
+      comment_date: '2026-10-12 14:30:00',
       emp_name: 'Sumeet Khan',
+      status: '0',
     },
     {
       comment_id: '202',
+      lead_id: '1421',
       comment: 'Send the brochure by email.',
-      created: '13-Oct-2026',
+      comment_date: '2026-10-13 09:15:00',
       emp_name: 'Sumeet Khan',
+      status: '0',
     },
   ],
   company: {
@@ -283,13 +289,4 @@ export const LEAD_DETAIL_FIXTURE = {
     emp_contact: '03171919170',
     emp_email: 'employee@franchisepk.com',
   },
-  /** Rows already attached to the lead via `POST /leads/info`. */
-  lead_media: [
-    {
-      img_id: '71',
-      title: 'Storefront',
-      img_path: 'public/admin/leads/a1b2c3d4e5.jpg',
-      created: '12-Oct-2026',
-    },
-  ],
 };

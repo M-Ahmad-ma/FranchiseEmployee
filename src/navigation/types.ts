@@ -7,6 +7,7 @@ export interface LeadDetailParams {
   investor?: string;
   phone?: string;
   company?: string;
+  e_co_id?: string;
 }
 
 /** The signed-in screens: four drawer sections plus one detail screen. */

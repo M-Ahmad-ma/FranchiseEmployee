@@ -13,6 +13,7 @@ describe('withPipelineNames', () => {
 
   const makeRow = (pipeline: string): LeadFilterRow => ({
     id: '1',
+    e_co_id: '',
     investor: 'Ali Khan',
     phone: '',
     cityId: '',
@@ -43,6 +44,7 @@ describe('withPipelineNames', () => {
     const input: LeadFilterRow[] = [
       {
         id: '1',
+        e_co_id: '',
         investor: 'Ali Khan',
         phone: '',
         cityId: '',

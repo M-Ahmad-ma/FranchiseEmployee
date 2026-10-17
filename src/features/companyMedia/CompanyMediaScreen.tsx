@@ -680,6 +680,8 @@ export function CompanyMediaScreen() {
               value={companyId}
               options={companyOptions}
               onChange={setCompanyId}
+              searchable
+              searchPlaceholder="Search companies"
             />
             <SelectField
               label="Media Type"
