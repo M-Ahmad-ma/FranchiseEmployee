@@ -64,6 +64,13 @@ export function FollowUpsScreen() {
   const [scheduling, setScheduling] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /**
+   * The pull gesture only. `loading` also covers the focus fetch and the tab
+   * switch, and feeding that to the RefreshControl made its spinner animate on
+   * top of the table's own spinner for a single request.
+   */
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -81,6 +88,16 @@ export function FollowUpsScreen() {
       void load();
     }, [load]),
   );
+
+  /** The pull gesture only — the focus fetch and tab switches stay silent. */
+  const refresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [load]);
 
   const onDone = useCallback(async (id: string) => {
     setNotice(null);
@@ -149,8 +166,8 @@ export function FollowUpsScreen() {
       title="Lead Follow-ups"
       subtitle="leads assigned to you"
       showMenu
-      onRefresh={load}
-      refreshing={loading}>
+      onRefresh={refresh}
+      refreshing={pullRefreshing}>
       <TabGroup tabs={STATUS_TABS} value={status} onChange={setStatus} />
 
       <View className="flex-row justify-end mb-4">
@@ -175,34 +192,43 @@ export function FollowUpsScreen() {
       )}
 
       <Card className="bg-white rounded-2xl overflow-hidden">
-        {loading ? (
-          <View className="items-center py-8">
-            <ActivityIndicator size="large" color="#5279AC" />
-          </View>
-        ) : rows.length === 0 ? (
-          <View className="px-4 py-6">
-            <AlertBanner
-              message={
-                status === 'active'
-                  ? 'No follow-ups are outstanding.'
-                  : 'No follow-ups have been scheduled yet.'
+        {/* Only the first load blanks the table. Switching tabs or refocusing
+            keeps the rows on screen, dimmed, rather than flashing a spinner —
+            a spinner there reads as "no follow-ups". */}
+        {rows.length === 0 ? (
+          loading ? (
+            <View className="items-center py-8">
+              <ActivityIndicator size="large" color="#5279AC" />
+            </View>
+          ) : (
+            <View className="px-4 py-6">
+              <AlertBanner
+                message={
+                  status === 'active'
+                    ? 'No follow-ups are outstanding.'
+                    : 'No follow-ups have been scheduled yet.'
+                }
+              />
+            </View>
+          )
+        ) : (
+          <View
+            style={{ opacity: loading ? 0.55 : 1 }}
+            accessibilityState={{ busy: loading }}>
+            <DataTable
+              columns={columns}
+              data={rows}
+              emptyMessage="No follow-ups."
+              onPressRow={row =>
+                navigation.navigate('LeadDetail', {
+                  leadId: row.leadId,
+                  investor: row.investor,
+                  phone: row.phone,
+                  company: row.company,
+                })
               }
             />
           </View>
-        ) : (
-          <DataTable
-            columns={columns}
-            data={rows}
-            emptyMessage="No follow-ups."
-            onPressRow={row =>
-              navigation.navigate('LeadDetail', {
-                leadId: row.leadId,
-                investor: row.investor,
-                phone: row.phone,
-                company: row.company,
-              })
-            }
-          />
         )}
       </Card>
 

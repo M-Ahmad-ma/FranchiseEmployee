@@ -546,6 +546,13 @@ export function CompanyMediaScreen() {
   const [viewing, setViewing] = useState<CompanyMediaFile | null>(null);
 
   /**
+   * The pull gesture only. `dropdownsLoading` starts true and is set on every
+   * focus, so wiring it to the RefreshControl meant the pull spinner was
+   * already spinning before the user could even touch the screen.
+   */
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+
+  /**
    * Images and videos open in the in-app viewer. PDFs and Brand Locations have
    * no native renderer, so those defer to the OS as before.
    */
@@ -588,6 +595,16 @@ export function CompanyMediaScreen() {
       void loadDropdowns();
     }, [loadDropdowns]),
   );
+
+  /** The pull gesture only — the focus fetch is silent. */
+  const refresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await loadDropdowns();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [loadDropdowns]);
 
   // A company change is what triggers the file list — the media-type picker
   // filters what is already loaded rather than refetching.
@@ -660,59 +677,57 @@ export function CompanyMediaScreen() {
       title="Company Media"
       subtitle="View and share images/videos/PDFs/locations for companies"
       showMenu
-      onRefresh={loadDropdowns}
-      refreshing={dropdownsLoading}>
+      onRefresh={refresh}
+      refreshing={pullRefreshing}>
       <Card className="bg-white rounded-2xl p-4">
         <Text className="font-lato-bold text-lg text-neutral-900 mb-4">
           Select Company &amp; Media Type
         </Text>
 
-        {dropdownsLoading ? (
-          <View className="items-center py-6 mb-4">
-            <ActivityIndicator size="large" color="#5279AC" />
-          </View>
-        ) : (
-          <>
-            <SelectField
-              label="Select Company"
-              required
-              placeholder="-- Select Company --"
-              value={companyId}
-              options={companyOptions}
-              onChange={setCompanyId}
-              searchable
-              searchPlaceholder="Search companies"
-            />
-            <SelectField
-              label="Media Type"
-              placeholder="-- All Media Types --"
-              value={optionId}
-              options={mediaTypeOptions}
-              onChange={setOptionId}
-            />
+        {/* The pickers stay mounted while the dropdowns load. Unmounting them
+            made the card collapse and jump on every focus, and hid the labels
+            the user was trying to read; each field shows its own spinner and
+            opens instantly with a spinner inside instead. */}
+        <SelectField
+          label="Select Company"
+          required
+          placeholder="-- Select Company --"
+          value={companyId}
+          options={companyOptions}
+          onChange={setCompanyId}
+          searchable
+          searchPlaceholder="Search companies"
+          loading={dropdownsLoading}
+        />
+        <SelectField
+          label="Media Type"
+          placeholder="-- All Media Types --"
+          value={optionId}
+          options={mediaTypeOptions}
+          onChange={setOptionId}
+          loading={dropdownsLoading}
+        />
 
-            <View className="flex-row gap-3 mt-2">
-              <Button
-                title="Filter by Type"
-                size="lg"
-                className="flex-1"
-                disabled={!companyId}
-                icon={<Filter size={16} color="#FFFFFF" />}
-                onPress={() => {
-                  setOptionId(optionId);
-                }}
-              />
-              <Button
-                title="Reset"
-                size="lg"
-                variant="secondary"
-                className="flex-1"
-                icon={<RefreshCw size={16} color="#FFFFFF" />}
-                onPress={reset}
-              />
-            </View>
-          </>
-        )}
+        <View className="flex-row gap-3 mt-2">
+          <Button
+            title="Filter by Type"
+            size="lg"
+            className="flex-1"
+            disabled={!companyId}
+            icon={<Filter size={16} color="#FFFFFF" />}
+            onPress={() => {
+              setOptionId(optionId);
+            }}
+          />
+          <Button
+            title="Reset"
+            size="lg"
+            variant="secondary"
+            className="flex-1"
+            icon={<RefreshCw size={16} color="#FFFFFF" />}
+            onPress={reset}
+          />
+        </View>
 
         {error && (
           <Text className="text-red-500 text-sm font-lato mt-3 text-center">
@@ -756,7 +771,7 @@ export function CompanyMediaScreen() {
             </View>
           )}
 
-          {mediaLoading ? (
+          {mediaLoading && visibleFiles.length === 0 ? (
             <View className="items-center py-8">
               <ActivityIndicator size="large" color="#5279AC" />
             </View>

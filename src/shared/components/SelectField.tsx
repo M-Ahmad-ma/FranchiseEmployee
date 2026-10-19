@@ -31,9 +31,11 @@ interface Props {
   modalTitle?: string;
   testID?: string;
   /**
-   * The option list is still in flight. The trigger stays visible but inert so a
-   * tap cannot open a modal with nothing in it, and the chevron is replaced by a
-   * spinner so the field reads as busy rather than broken.
+   * The option list is still in flight.
+   *
+   * The trigger stays tappable on purpose: opening the modal immediately and
+   * showing a spinner inside it confirms the tap registered, which is far better
+   * than swallowing the tap and leaving the field looking frozen.
    */
   loading?: boolean;
   /** Shows a type-to-filter box above the list. Worth it on the long lists. */
@@ -73,9 +75,6 @@ export function SelectField({
   };
 
   const openModal = () => {
-    if (loading) {
-      return;
-    }
     setOpen(true);
   };
 
@@ -145,8 +144,13 @@ export function SelectField({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
             {loading ? (
+              // The modal opens straight away on tap, so this is what fills the
+              // gap while the list arrives — the tap always visibly registers.
               <View className="items-center py-10">
                 <ActivityIndicator size="large" color="#5279AC" />
+                <Text className="font-lato text-xs text-neutral-500 mt-3">
+                  Loading options…
+                </Text>
               </View>
             ) : visibleOptions.length === 0 ? (
               <Text className="font-lato text-sm text-neutral-500 text-center py-10 px-4">
@@ -198,10 +202,9 @@ export function SelectField({
         <TouchableOpacity
           testID={testID}
           activeOpacity={0.8}
-          disabled={loading}
           onPress={openModal}
           accessibilityRole="button"
-          accessibilityState={{ disabled: loading, busy: loading }}
+          accessibilityState={{ busy: loading }}
           className="flex-row items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5">
           <Text className="font-lato text-xs text-neutral-700">
             {prefix ? `${prefix} ` : ''}
@@ -229,10 +232,9 @@ export function SelectField({
       <TouchableOpacity
         testID={testID}
         activeOpacity={0.8}
-        disabled={loading}
         onPress={openModal}
         accessibilityRole="button"
-        accessibilityState={{ disabled: loading, busy: loading }}
+        accessibilityState={{ busy: loading }}
         className="bg-white rounded-2xl px-4 py-3.5 border border-neutral-200 flex-row items-center justify-between">
         <Text
           className={`font-lato text-base flex-1 ${

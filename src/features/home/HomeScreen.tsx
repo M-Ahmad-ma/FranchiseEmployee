@@ -176,6 +176,13 @@ export function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The pull gesture only. `loading` also covers the focus-driven refetch, and
+   * feeding that to the RefreshControl made its spinner animate on every visit
+   * — stacked on top of the "At a glance" indicator and the preview spinner.
+   */
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -199,9 +206,19 @@ export function HomeScreen() {
   // preview are never left showing what was true when it was first mounted.
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load]),
   );
+
+  /** The pull gesture only — the focus refetch is silent by design. */
+  const refresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [load]);
 
 
   const preview = followUps;
@@ -228,8 +245,8 @@ export function HomeScreen() {
       title="Home"
       subtitle="Your franchise workspace at a glance"
       showMenu
-      onRefresh={load}
-      refreshing={loading}>
+      onRefresh={refresh}
+      refreshing={pullRefreshing}>
       {/* ------------------------------ Hero ------------------------------ */}
       <Card
         className="bg-primary-900 rounded-3xl overflow-hidden mb-5"
@@ -286,12 +303,12 @@ export function HomeScreen() {
       </Card>
 
       {/* --------------------------- At a glance -------------------------- */}
-      <View className="flex-row items-center justify-between mb-3 px-1">
-        <Text className="font-lato-black text-lg text-neutral-900">
-          At a glance
-        </Text>
-        {loading && <ActivityIndicator size="small" color="#5279AC" />}
-      </View>
+      {/* No spinner here: this card and the preview below come from the same
+          fetch, and one indicator per fetch is the rule. A background refresh
+          leaves the old numbers up rather than blanking them to "—". */}
+      <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1">
+        At a glance
+      </Text>
 
       <Card className="bg-white rounded-2xl flex-row py-4 mb-6">
         {metrics.map((metric, index) => (
@@ -299,7 +316,7 @@ export function HomeScreen() {
             <View className="flex-1 items-center px-1">
               <View className={`w-1.5 h-1.5 rounded-full ${metric.dot} mb-2`} />
               <Text className="font-lato-black text-2xl text-neutral-900">
-                {loading ? '—' : String(metric.value)}
+                {stats ? String(metric.value) : '—'}
               </Text>
               <Text className="font-lato-bold text-[10px] uppercase tracking-[1px] text-neutral-600 mt-1 text-center">
                 {metric.label}
@@ -382,7 +399,9 @@ export function HomeScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : loading ? (
+        ) : loading && preview.length === 0 ? (
+          // First load only. A refetch keeps the rows on screen instead of
+          // swapping them for a spinner.
           <View className="items-center py-8">
             <ActivityIndicator size="large" color="#5279AC" />
           </View>

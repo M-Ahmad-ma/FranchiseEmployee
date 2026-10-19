@@ -3,6 +3,7 @@ import { get, getPaged, MAX_PER_PAGE, type Paged } from './httpClient';
 import { delay, pickString } from './utils';
 import type { Option } from './utils';
 import { logMock } from './mockLogger';
+import type { Meeting } from './meetingService';
 import {
   LEAD_FILTER_DROPDOWNS_FIXTURE,
   LEAD_FILTER_META_FIXTURE,
@@ -201,6 +202,87 @@ export function withPipelineNames(
     ...row,
     pipelineLabel: byId.get(row.pipeline) ?? row.pipelineLabel,
   }));
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Meeting join                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A lead row plus whatever meetings the server returned for it.
+ *
+ * `meetingCount` is 0 when the lead has none — and also when the meetings fetch
+ * failed, which is why the screen reports that separately rather than inferring
+ * it from a column of zeros.
+ */
+export interface LeadRowWithMeetings extends LeadFilterRow {
+  meetingCount: number;
+  /** The soonest upcoming meeting, or the most recent one if all are past. */
+  nextMeeting: Meeting | null;
+}
+
+const timestamp = (meeting: Meeting) =>
+  Date.parse(`${meeting.date}T${meeting.time || '00:00'}`) || 0;
+
+/**
+ * Open first, then soonest. Undated meetings sort last but are never dropped.
+ *
+ * `status` "1" is the documented default for the endpoint's `status` query
+ * param, so it is read as *open*. Anything unrecognised is treated as open too:
+ * guessing wrong here only affects ordering, whereas treating an unknown value
+ * as closed would hide a real upcoming meeting behind a grey badge.
+ */
+function pickPrimary(meetings: Meeting[]): Meeting | null {
+  if (meetings.length === 0) {
+    return null;
+  }
+
+  const isOpen = (meeting: Meeting) => meeting.status !== '0';
+
+  return [...meetings].sort((a, b) => {
+    const aDone = isOpen(a) ? 0 : 1;
+    const bDone = isOpen(b) ? 0 : 1;
+    if (aDone !== bDone) {
+      return aDone - bDone;
+    }
+    return timestamp(a) - timestamp(b);
+  })[0];
+}
+
+/**
+ * Decorates leads with their meetings.
+ *
+ * `/meetings` has no `lead_id` filter, so this joins on the client: one fetch
+ * covers the whole table because meetings and leads share the session scope.
+ * Meetings whose `leadId` is empty are skipped rather than risking a match
+ * against a blank key.
+ */
+export function withMeetings(
+  rows: LeadFilterRow[],
+  meetings: Meeting[],
+): LeadRowWithMeetings[] {
+  const byLead = new Map<string, Meeting[]>();
+
+  for (const meeting of meetings) {
+    if (!meeting.leadId) {
+      continue;
+    }
+    const bucket = byLead.get(meeting.leadId);
+    if (bucket) {
+      bucket.push(meeting);
+    } else {
+      byLead.set(meeting.leadId, [meeting]);
+    }
+  }
+
+  return rows.map(row => {
+    const found = byLead.get(row.id) ?? [];
+    return {
+      ...row,
+      meetingCount: found.length,
+      nextMeeting: pickPrimary(found),
+    };
+  });
 }
 
 /* -------------------------------------------------------------------------- */

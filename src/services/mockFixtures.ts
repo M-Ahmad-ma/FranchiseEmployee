@@ -168,6 +168,42 @@ export const FOLLOWUPS_FIXTURE = [
 ];
 
 /** `GET /followups/bell` — badge count plus the most recent active rows. */
+/* -------------------------------------------------------------------------- */
+/*  Meetings                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `GET /meetings` — the API documents this list as an empty array, so these keys
+ * are a stand-in that exercises the tolerant row readers. The `lead_id` values
+ * line up with LEAD_FILTER_ROWS_FIXTURE so the join resolves in mock mode.
+ */
+export const MEETINGS_FIXTURE = [
+  {
+    meeting_id: '61',
+    lead_id: '1421',
+    status: '1',
+    meeting_date: '2026-10-20',
+    meeting_time: '14:30',
+    title: 'Zero Degree',
+  },
+  {
+    meeting_id: '62',
+    lead_id: '1422',
+    status: '1',
+    meeting_date: '2026-10-21',
+    meeting_time: '11:00',
+    title: 'Mr.COD',
+  },
+  {
+    meeting_id: '63',
+    lead_id: '1421',
+    status: '0',
+    meeting_date: '2026-10-12',
+    meeting_time: '10:00',
+    title: 'Zero Degree',
+  },
+];
+
 export const FOLLOWUPS_BELL_FIXTURE = {
   followups: FOLLOWUPS_FIXTURE.filter(row => row.status === 'active').slice(0, 2),
   count: 4,
