@@ -1,5 +1,5 @@
 import { USE_MOCK } from '../config';
-import { get } from './httpClient';
+import { get, ApiError } from './httpClient';
 import { delay, pickString } from './utils';
 import { MEETINGS_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
@@ -21,38 +21,74 @@ import { logMock } from './mockLogger';
 export interface Meeting {
   id: string;
   /**
-   * The lead this meeting belongs to. This is the join key against
-   * `LeadFilterRow.id` (`e_id`), and the only reason a single `/meetings` call
-   * can decorate the leads table at all — the endpoint has no `lead_id` filter.
+   * The lead this meeting belongs to — `request_id` on the wire, joined against
+   * `LeadFilterRow.id` (`e_id`). It is the only reason a single `/meetings` call
+   * can decorate the leads table at all, since the endpoint has no lead filter.
    */
   leadId: string;
   /** Raw status from the row. The API documents `0`/`1` as a filter, not labels. */
   status: string;
+  /**
+   * `meeting_type` on the meeting row, using the same codes as the lead's own
+   * column. Read separately because one lead can have meetings of several types,
+   * and the meeting's type is the one that belongs next to its date.
+   */
+  type: string;
   date: string;
   time: string;
-  /** Meeting title or category name, when the row carries one. */
+  /** Lead's name as recorded on the meeting row (`franchisee_name`). */
   title: string;
+  /** Brand or company (`com_name`). */
+  brand: string;
+  /** The note the employee wrote — `meetiing_desc`, typo included. */
+  description: string;
+  /** Raw venue text. Inconsistent casing and spacing, so never rendered raw. */
+  venue: string;
 }
 
 /** `1` is the documented default for the `status` query param. */
 const ACTIVE = '1';
 const CLOSED = '0';
 
+/**
+ * What the two status calls produced together.
+ *
+ * `complete` is false when only one branch came back, so the screen can report
+ * partial data instead of claiming meetings are unavailable.
+ */
+export interface MeetingsResult {
+  meetings: Meeting[];
+  complete: boolean;
+}
+
+/**
+ * Key names below are read off a real `/meetings` response rather than guessed.
+ * The documented response is `"meetings": []`, so the fallback candidates stay
+ * in place — but the first entry in each list is the one the server actually
+ * sends, and `request_id` in particular is promoted to primary because it is
+ * what the leads table joins on.
+ *
+ * `meetiing_desc` is spelled that way on the server; the typo is theirs and is
+ * reproduced here deliberately.
+ */
 function normalizeMeeting(row: Record<string, unknown>): Meeting {
-  const first = pickString(row, ['firstname', 'e_firstname', 'f_name']);
-  const last = pickString(row, ['lastname', 'e_lastname', 'l_name']);
+  const name = pickString(row, ['franchisee_name', 'name', 'investor']);
 
   return {
     id: pickString(row, ['meeting_id', 'id', 'm_id']),
-    leadId: pickString(row, ['lead_id', 'e_id', 'request_id', 'req_id']),
-    status: pickString(row, ['status', 'meeting_status']),
+    leadId: pickString(row, ['request_id', 'lead_id', 'e_id', 'req_id']),
+    status: pickString(row, ['meeting_status', 'status']),
+    type: pickString(row, ['meeting_type', 'type']),
     date: pickString(row, ['meeting_date', 'date', 'meet_date', 'm_date']),
     time: pickString(row, ['meeting_time', 'time', 'meet_time']),
-    // Falls back to the attendee's name so the cell is never blank on a row the
-    // server did give us, though a meeting title is the preferred reading.
-    title:
-      pickString(row, ['title', 'meeting_title', 'c_name', 'category_name']) ||
-      [first, last].filter(Boolean).join(' ').trim(),
+    title: name,
+    brand: pickString(row, ['com_name', 'company', 'brand']),
+    description: pickString(row, [
+      'meetiing_desc',
+      'meeting_desc',
+      'description',
+    ]),
+    venue: pickString(row, ['meeting_venue', 'venue']),
   };
 }
 
@@ -66,7 +102,9 @@ export async function fetchMeetings(status?: string): Promise<Meeting[]> {
     const rows = (
       status === undefined
         ? MEETINGS_FIXTURE
-        : MEETINGS_FIXTURE.filter(row => row.status === status)
+        : // Filtered on the raw `meeting_status`, matching the shape the server
+          // sends rather than the normalised `status`.
+          MEETINGS_FIXTURE.filter(row => row.meeting_status === status)
     ) as Record<string, unknown>[];
     const result = normalizeList(rows);
     logMock(
@@ -81,6 +119,8 @@ export async function fetchMeetings(status?: string): Promise<Meeting[]> {
     status === undefined ? undefined : { status },
   );
 
+  console.log("meetings data", data)
+
   return normalizeList(data?.meetings);
 }
 
@@ -89,12 +129,49 @@ export async function fetchMeetings(status?: string): Promise<Meeting[]> {
  *
  * Both are needed: the table has to distinguish a scheduled meeting from one
  * that already happened, and the endpoint returns only one status per call.
+ *
+ * Settled rather than all: `status=0` is the less-travelled branch and a
+ * failure there must not throw away the `status=1` rows we already have. A
+ * partial result still renders — the caller is told which half is missing via
+ * `MeetingsResult.complete`.
  */
-export async function fetchAllMeetings(): Promise<Meeting[]> {
-  const [active, closed] = await Promise.all([
+export async function fetchAllMeetings(): Promise<MeetingsResult> {
+  const [active, closed] = await Promise.allSettled([
     fetchMeetings(ACTIVE),
     fetchMeetings(CLOSED),
   ]);
 
-  return [...active, ...closed];
+  const failures: string[] = [];
+  const rows: Meeting[] = [];
+
+  if (active.status === 'fulfilled') {
+    rows.push(...active.value);
+  } else {
+    failures.push(`status=${ACTIVE}: ${describe(active.reason)}`);
+  }
+
+  if (closed.status === 'fulfilled') {
+    rows.push(...closed.value);
+  } else {
+    failures.push(`status=${CLOSED}: ${describe(closed.reason)}`);
+  }
+
+  if (failures.length === 2) {
+    throw new Error(`/meetings failed — ${failures.join('; ')}`);
+  }
+  if (failures.length === 1) {
+    // Logged rather than thrown: the half that worked is still useful, and a
+    // banner would wrongly claim the whole column is unavailable.
+    console.warn(`[meetings] partial fetch — ${failures.join('; ')}`);
+  }
+
+  return { meetings: rows, complete: failures.length === 0 };
+}
+
+/** Keeps the failure readable in a log line without dumping a whole envelope. */
+function describe(reason: unknown) {
+  if (reason instanceof ApiError) {
+    return `${reason.status} ${reason.message}`;
+  }
+  return reason instanceof Error ? reason.message : String(reason);
 }

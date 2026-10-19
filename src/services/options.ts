@@ -1,4 +1,8 @@
-import { Option } from './utils';
+import type { Option } from './utils';
+import {
+  DEAL_DONE_LABELS,
+  MEETING_TYPE_LABELS,
+} from './leadsFilterService';
 
 /**
  * Reference data for dropdowns.
@@ -9,22 +13,30 @@ import { Option } from './utils';
  * those pickers disabled until the dropdowns resolve.
  *
  * The lists below are static because the API documents the codes it accepts.
+ * Their labels are read from the maps in `leadsFilterService` rather than
+ * repeated here — the two copies drifted once already, which is how the app came
+ * to call code 2 "Video Call" when the server calls it "Conference Call".
  */
 
+/** Order mirrors the web dashboard's own filter markup. */
 export const DEALS_DONE_OPTIONS: Option[] = [
-  { label: 'Yes', value: '1' },
-  { label: 'No', value: '0' },
+  { label: DEAL_DONE_LABELS['1'], value: '1' },
+  { label: DEAL_DONE_LABELS['0'], value: '0' },
 ];
 
 /**
+ * An empty value means "All": `buildUrl` drops empty params, so no `meeting_type`
+ * is sent and the server applies no filter at all.
+ *
  * `none` is not a fourth meeting type — the controller turns it into an
- * `IS NULL` match, so it labels a lead with no meeting type recorded.
+ * `IS NULL` match, so it selects leads with no meeting type recorded.
  */
 export const MEETING_TYPE_OPTIONS: Option[] = [
-  { label: 'In Person', value: '1' },
-  { label: 'Video Call', value: '2' },
-  { label: 'Phone Call', value: '3' },
-  { label: 'Not Set', value: 'none' },
+  { label: 'All', value: '' },
+  { label: MEETING_TYPE_LABELS.none, value: 'none' },
+  { label: MEETING_TYPE_LABELS['1'], value: '1' },
+  { label: MEETING_TYPE_LABELS['2'], value: '2' },
+  { label: MEETING_TYPE_LABELS['3'], value: '3' },
 ];
 
 export const RECORDS_PER_PAGE_OPTIONS: Option[] = [

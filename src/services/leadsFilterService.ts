@@ -79,11 +79,7 @@ export interface LeadFilterDropdowns {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The API documents these as codes, not names: `deal_done` accepts `1`/`0` (or
- * legacy `yes`/`no`) and `meeting_type` accepts `1`/`2`/`3` (or `none`). It
- * never says what `1`/`2`/`3` mean, so these labels are this app's assumption
- * carried over from the reference lists — change them here, in one place, if
- * the server defines the codes differently.
+ * `deal_done` accepts `1`/`0` (or the legacy `yes`/`no`).
  */
 export const DEAL_DONE_LABELS: Record<string, string> = {
   '1': 'Yes',
@@ -92,18 +88,41 @@ export const DEAL_DONE_LABELS: Record<string, string> = {
   no: 'No',
 };
 
+/**
+ * `meeting_type` codes, taken from the web dashboard's own filter markup:
+ *
+ *   <select name="meeting_type">
+ *     <option value="">All</option>
+ *     <option value="none">No Meeting</option>
+ *     <option value="1">Physical</option>
+ *     <option value="2">Conference Call</option>
+ *     <option value="3">Zoom</option>
+ *   </select>
+ *
+ * That markup is the only place these meanings are defined — the API documents
+ * just that the column accepts `1`/`2`/`3` or `none`. This app previously
+ * guessed "In Person" / "Video Call" / "Phone Call", which contradicted the
+ * server: code 2 is Conference Call, and no Phone Call code exists at all.
+ */
 export const MEETING_TYPE_LABELS: Record<string, string> = {
-  '1': 'In Person',
-  '2': 'Video Call',
-  '3': 'Phone Call',
-  none: 'Not Set',
+  '1': 'Physical',
+  '2': 'Conference Call',
+  '3': 'Zoom',
+  none: 'No Meeting',
 };
 
 export const dealDoneLabel = (value: string) =>
   DEAL_DONE_LABELS[value.trim().toLowerCase()] ?? '';
 
-export const meetingTypeLabel = (value: string) =>
-  MEETING_TYPE_LABELS[value.trim().toLowerCase()] ?? '';
+/**
+ * An absent `meeting_type` is a NULL column, which the server itself groups
+ * under the `none` / "No Meeting" option — so it reads as that rather than as a
+ * blank dash.
+ */
+export const meetingTypeLabel = (value: string) => {
+  const key = value.trim().toLowerCase();
+  return key ? (MEETING_TYPE_LABELS[key] ?? '') : MEETING_TYPE_LABELS.none;
+};
 
 /* -------------------------------------------------------------------------- */
 /*  Normalisers                                                                */
@@ -359,7 +378,6 @@ export async function fetchFilteredLeads(
     total?: number;
   }>('leads/filter', query);
 
-  console.log(data, "data")
 
   return {
     data: {

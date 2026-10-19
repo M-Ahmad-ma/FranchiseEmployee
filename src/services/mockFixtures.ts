@@ -173,34 +173,48 @@ export const FOLLOWUPS_FIXTURE = [
 /* -------------------------------------------------------------------------- */
 
 /**
- * `GET /meetings` — the API documents this list as an empty array, so these keys
- * are a stand-in that exercises the tolerant row readers. The `lead_id` values
- * line up with LEAD_FILTER_ROWS_FIXTURE so the join resolves in mock mode.
+ * `GET /meetings` — modelled on a real response rather than invented, so the
+ * mock exercises the same key names the server sends: `request_id` for the lead
+ * link, `franchisee_name` for the investor, and `meetiing_desc` with the
+ * server's own typo. `request_id` values line up with LEAD_FILTER_ROWS_FIXTURE
+ * so the join resolves in mock mode.
  */
 export const MEETINGS_FIXTURE = [
   {
     meeting_id: '61',
-    lead_id: '1421',
-    status: '1',
+    request_id: '1421',
+    meeting_status: '1',
+    meeting_type: '2',
     meeting_date: '2026-10-20',
     meeting_time: '14:30',
-    title: 'Zero Degree',
+    meeting_venue: 'conference call',
+    meetiing_desc: 'Ali, conference call arranged for today.',
+    com_name: 'Zero Degree',
+    franchisee_name: 'Ali Khan',
   },
   {
     meeting_id: '62',
-    lead_id: '1422',
-    status: '1',
+    request_id: '1422',
+    meeting_status: '1',
+    meeting_type: '3',
     meeting_date: '2026-10-21',
     meeting_time: '11:00',
-    title: 'Mr.COD',
+    meeting_venue: 'zoom meeting',
+    meetiing_desc: 'Ayesha, zoom arranged for tomorrow.',
+    com_name: 'Mr.COD',
+    franchisee_name: 'Ayesha Malik',
   },
   {
     meeting_id: '63',
-    lead_id: '1421',
-    status: '0',
+    request_id: '1421',
+    meeting_status: '0',
+    meeting_type: '1',
     meeting_date: '2026-10-12',
     meeting_time: '10:00',
-    title: 'Zero Degree',
+    meeting_venue: 'physical meeting',
+    meetiing_desc: 'Ali, physical meeting done.',
+    com_name: 'Zero Degree',
+    franchisee_name: 'Ali Khan',
   },
 ];
 

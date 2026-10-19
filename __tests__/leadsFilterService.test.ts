@@ -72,11 +72,19 @@ describe('value labels', () => {
     expect(dealDoneLabel('no')).toBe('No');
   });
 
+  // Codes and labels come from the web dashboard's own filter markup:
+  // 1 = Physical, 2 = Conference Call, 3 = Zoom, none = No Meeting.
   it('maps the meeting_type codes, and `none` to a distinct label', () => {
-    expect(meetingTypeLabel('1')).toBe('In Person');
-    expect(meetingTypeLabel('2')).toBe('Video Call');
-    expect(meetingTypeLabel('3')).toBe('Phone Call');
-    expect(meetingTypeLabel('none')).toBe('Not Set');
+    expect(meetingTypeLabel('1')).toBe('Physical');
+    expect(meetingTypeLabel('2')).toBe('Conference Call');
+    expect(meetingTypeLabel('3')).toBe('Zoom');
+    expect(meetingTypeLabel('none')).toBe('No Meeting');
+  });
+
+  it('treats a NULL meeting_type as "No Meeting", matching the none option', () => {
+    // The controller turns `none` into an IS NULL match, so a lead with a null
+    // column is in that bucket rather than unclassified.
+    expect(meetingTypeLabel('')).toBe('No Meeting');
   });
 
   it('returns empty for an unknown code so the cell falls back to a dash', () => {

@@ -31,9 +31,13 @@ const meeting = (over: Partial<Meeting> = {}): Meeting => ({
   id: 'm1',
   leadId: '1421',
   status: '1',
+  type: '2',
   date: '2026-10-20',
   time: '14:30',
   title: 'Zero Degree',
+  brand: 'Mr.COD',
+  description: '',
+  venue: 'conference call',
   ...over,
 });
 

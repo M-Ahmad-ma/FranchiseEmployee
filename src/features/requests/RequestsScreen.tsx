@@ -69,10 +69,10 @@ const columns: TableColumn<LeadRowWithMeetings>[] = [
   {
     key: 'meetingType',
     title: 'Type',
-    width: 100,
+    width: 115,
     render: row => (
       <Text className="font-lato text-sm text-neutral-900">
-        {meetingTypeLabel(row.meetingType) || '—'}
+        {meetingTypeLabel(row.meetingType)}
       </Text>
     ),
   },
@@ -103,10 +103,9 @@ const columns: TableColumn<LeadRowWithMeetings>[] = [
       // unrecognised status reads as still scheduled rather than done.
       const open = meeting.status !== '0';
 
-      // The type is the lead's `meeting_type`, not a field on the meeting row —
-      // `/meetings` documents none. So filtering by "Video Call" and seeing
-      // "Video Call" here is the same value the Type column shows.
-      const parts = [meetingDay(meeting.date), meetingTypeLabel(row.meetingType)];
+      // The meeting's own `meeting_type`, not the lead's — one lead can have
+      // meetings of different types, and this column belongs to the row shown.
+      const parts = [meetingDay(meeting.date), meetingTypeLabel(meeting.type)];
       if (!open) {
         parts.push('Done');
       }
@@ -114,13 +113,11 @@ const columns: TableColumn<LeadRowWithMeetings>[] = [
       return (
         <View className="flex-row items-center gap-1.5">
           <View
-            className={`rounded-full px-2 py-1 self-start ${
-              open ? 'bg-amber-100' : 'bg-neutral-200'
-            }`}>
+            className={`rounded-full px-2 py-1 self-start ${open ? 'bg-amber-100' : 'bg-neutral-200'
+              }`}>
             <Text
-              className={`font-lato-bold text-[11px] ${
-                open ? 'text-amber-800' : 'text-neutral-600'
-              }`}
+              className={`font-lato-bold text-[11px] ${open ? 'text-amber-800' : 'text-neutral-600'
+                }`}
               numberOfLines={1}>
               {parts.filter(Boolean).join(' · ')}
             </Text>
@@ -193,11 +190,17 @@ export function RequestsScreen() {
   const loadMeetings = useCallback(async () => {
     setMeetingsFailed(false);
     try {
-      setMeetings(await fetchAllMeetings());
-    } catch {
+      const result = await fetchAllMeetings();
+      setMeetings(result.meetings);
+      // A partial fetch still renders the rows it got — only a total failure
+      // hides the column.
+      setMeetingsFailed(!result.complete);
+    } catch (error) {
       // Non-fatal: the leads list and every filter still work, and the Meeting
       // column falls back to "None". Reported so the empty column isn't read as
       // "these leads have no meetings".
+      console.warn('[meetings] fetch failed', error);
+      setMeetings([]);
       setMeetingsFailed(true);
     }
   }, []);
@@ -217,18 +220,35 @@ export function RequestsScreen() {
     }
   }, []);
 
+  /**
+   * `overrides` exists because React state setters do not take effect until the
+   * next render. Any handler that changes the page or filters and then calls
+   * this in the same tick would otherwise read the *previous* values out of this
+   * closure — which made every page number need a second tap, and made Reset
+   * refetch page 1 with the old filters still applied. Callers that move the page
+   * or clear the filters pass the new values straight through.
+   */
   const load = useCallback(
-    async (fromUser = false) => {
-      if (fromUser) {
+    async (overrides: {
+      fromUser?: boolean;
+      page?: number;
+      filters?: LeadFilterParams;
+      perPage?: string;
+    } = {}) => {
+      const targetPage = overrides.page ?? page;
+      const targetFilters = overrides.filters ?? filters;
+      const targetPerPage = overrides.perPage ?? perPage;
+
+      if (overrides.fromUser) {
         setActionLoading(true);
       }
       setLoading(true);
       setError(null);
       try {
         const { data, meta: nextMeta } = await fetchFilteredLeads({
-          ...filters,
-          page,
-          perPage: Number(perPage) || 10,
+          ...targetFilters,
+          page: targetPage,
+          perPage: Number(targetPerPage) || 10,
         });
         setMeta(nextMeta);
         setRows(
@@ -291,8 +311,11 @@ export function RequestsScreen() {
   };
 
   const changePage = (next: number) => {
+    if (next === page) {
+      return;
+    }
     setPage(next);
-    void load(true);
+    void load({ fromUser: true, page: next });
   };
 
   /**
@@ -430,7 +453,7 @@ export function RequestsScreen() {
             icon={<Filter size={16} color="#FFFFFF" />}
             onPress={() => {
               setPage(1);
-              void load(true);
+              void load({ fromUser: true, page: 1 });
             }}
           />
           <Button
@@ -442,7 +465,10 @@ export function RequestsScreen() {
             icon={<RefreshCw size={16} color="#FFFFFF" />}
             onPress={() => {
               resetFilters();
-              void load(true);
+              // Both the cleared filters and page 1 are passed explicitly:
+              // neither has rendered yet, so the closure still holds the old
+              // values and the request would come back filtered by them.
+              void load({ fromUser: true, page: 1, filters: {} });
             }}
           />
         </View>
@@ -470,13 +496,17 @@ export function RequestsScreen() {
             onChange={v => {
               setPerPage(v);
               setPage(1);
+              // Reloads immediately rather than waiting for Apply — a page-size
+              // control that looks inert until you press something else reads
+              // as broken. The new size and page are passed through for the
+              // same stale-closure reason as above.
+              void load({ fromUser: true, page: 1, perPage: v });
             }}
             modalTitle="Records per page"
           />
           <Badge
-            label={`Filtered Requests: ${
-              loading && rows.length === 0 ? '—' : meta.total
-            }`}
+            label={`Filtered Requests: ${loading && rows.length === 0 ? '—' : meta.total
+              }`}
             tone="primary"
           />
         </View>
@@ -487,6 +517,7 @@ export function RequestsScreen() {
           {meetingsFailed ? (
             <View className="mb-3">
               <AlertBanner message="Could not load meetings. The Meeting column is unavailable." />
+
             </View>
           ) : null}
 
