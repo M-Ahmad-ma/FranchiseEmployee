@@ -54,6 +54,12 @@ export interface LeadFilterRow {
   brandId: string;
   brand: string;
   meetingType: string;
+  /**
+   * `meeting_status` — "1" when the lead has a meeting recorded, "0" when it
+   * does not. Undocumented in the API spec but present on every row, and more
+   * direct than inferring it from a null `meeting_type`.
+   */
+  meetingStatus: string;
   /** Raw pipeline status id. */
   pipeline: string;
   /** Resolved status name; falls back to the id when the lookup misses. */
@@ -153,6 +159,7 @@ function normalizeLead(row: Record<string, unknown>): LeadFilterRow {
     brandId: pickString(row, ['e_co_id']),
     brand: pickString(row, ['co_name', 'brand', 'company_name']),
     meetingType: pickString(row, ['meeting_type']),
+    meetingStatus: pickString(row, ['meeting_status']),
     pipeline,
     pipelineLabel: pipeline,
     dealDone: pickString(row, ['deal_done', 'deals_done']),
@@ -210,11 +217,14 @@ function toQuery(params: LeadFilterParams) {
  * Joins each row's pipeline id to its display name. Rows carrying an id the
  * dropdowns endpoint didn't return keep the id as their label rather than
  * rendering blank.
+ *
+ * Generic so it can be re-applied to already-joined rows without dropping the
+ * meeting fields the screen added.
  */
-export function withPipelineNames(
-  rows: LeadFilterRow[],
+export function withPipelineNames<T extends LeadFilterRow>(
+  rows: T[],
   statuses: PipelineStatus[],
-): LeadFilterRow[] {
+): T[] {
   const byId = new Map(statuses.map(status => [status.id, status.name]));
 
   return rows.map(row => ({
@@ -266,6 +276,26 @@ function pickPrimary(meetings: Meeting[]): Meeting | null {
     }
     return timestamp(a) - timestamp(b);
   })[0];
+}
+
+/**
+ * The single meeting a lead should be described by: the open one, earliest
+ * first, falling back to the soonest closed one. Exported so the lead detail
+ * screen describes a lead exactly as the leads table does.
+ */
+export function pickPrimaryMeeting(meetings: Meeting[]): Meeting | null {
+  return pickPrimary(meetings);
+}
+
+/** Every meeting recorded against one lead, matched on `request_id`. */
+export function meetingsForLead(
+  meetings: Meeting[],
+  leadId: string,
+): Meeting[] {
+  if (!leadId) {
+    return [];
+  }
+  return meetings.filter(meeting => meeting.leadId === leadId);
 }
 
 /**
@@ -345,6 +375,50 @@ export async function fetchLeadFilterDropdowns(): Promise<LeadFilterDropdowns> {
     pipelineStatuses: normalizePipelineStatuses(data?.pipeline_statuses),
   };
 }
+
+/**
+ * Pipeline statuses only, memoised briefly.
+ *
+ * The lead detail screen needs them to label the stage picker, but it has no
+ * cities or companies to justify pulling the whole dropdowns payload. These are
+ * employee-scoped and change rarely, so one short cache lets it share a fetch
+ * with the leads table instead of repeating it on every detail entry.
+ */
+let pipelineCache: { statuses: PipelineStatus[]; at: number } | null = null;
+let pipelineInFlight: Promise<PipelineStatus[]> | null = null;
+
+export function clearPipelineStatusCache() {
+  pipelineCache = null;
+  pipelineInFlight = null;
+}
+
+export async function fetchPipelineStatusesCached(
+  maxAgeMs = PIPELINE_CACHE_MS,
+): Promise<PipelineStatus[]> {
+  if (pipelineCache && Date.now() - pipelineCache.at < maxAgeMs) {
+    return pipelineCache.statuses;
+  }
+  if (pipelineInFlight) {
+    return pipelineInFlight;
+  }
+
+  pipelineInFlight = fetchLeadFilterDropdowns()
+    .then(result => {
+      pipelineCache = { statuses: result.pipelineStatuses, at: Date.now() };
+      pipelineInFlight = null;
+      return result.pipelineStatuses;
+    })
+    .catch(error => {
+      // Same reasoning as the meetings cache: a rejected inFlight promise would
+      // be replayed to every later caller with no network call at all.
+      pipelineInFlight = null;
+      throw error;
+    });
+
+  return pipelineInFlight;
+}
+
+const PIPELINE_CACHE_MS = 60_000;
 
 /**
  * GET /api/team/leads/filter — leads assigned to this employee, filtered and

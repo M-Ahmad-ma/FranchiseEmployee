@@ -21,24 +21,26 @@ brand/company dashboard API (`UserpanelApi.php`) are documented in
 5. [Reports](#reports)
 6. [Brands](#brands)
 7. [Properties](#properties)
-8. [Meetings](#meetings)
-9. [Companies](#companies)
-10. [Users](#users)
-11. [Jobs](#jobs)
-12. [Events](#events)
-13. [Downloads](#downloads)
-14. [Franchise](#franchise)
-15. [Requests](#requests)
-16. [Investor Requests](#investor-requests)
-17. [Advertisements](#advertisements)
-18. [Subscribers](#subscribers)
-19. [Leads Filter](#leads-filter)
-20. [Leads Followups](#leads-followups)
-21. [Media Management](#media-management)
-22. [Lead Info Upload](#lead-info-upload)
-23. [Error Codes](#error-codes)
-24. [Worked Example](#worked-example)
-25. [Notes and Constraints](#notes-and-constraints)
+8. [Lead Status](#lead-status)
+9. [Meetings](#meetings)
+10. [Companies](#companies)
+11. [Users](#users)
+12. [Jobs](#jobs)
+13. [Events](#events)
+14. [Downloads](#downloads)
+15. [Franchise](#franchise)
+16. [Requests](#requests)
+17. [Investor Requests](#investor-requests)
+18. [Advertisements](#advertisements)
+19. [Subscribers](#subscribers)
+20. [Leads Filter](#leads-filter)
+21. [Leads Followups](#leads-followups)
+22. [Media Management](#media-management)
+23. [Lead Info Upload](#lead-info-upload)
+24. [Lead Comments](#lead-comments)
+25. [Error Codes](#error-codes)
+26. [Worked Example](#worked-example)
+27. [Notes and Constraints](#notes-and-constraints)
 
 ---
 
@@ -257,7 +259,7 @@ curl -b cookies.txt "https://example.com/api/team/auth/me"
 | GET | `/api/team/shows/:city` | Yes | `Admin_model->get_show()` |
 | GET | `/api/team/properties` | Yes | `home_m->get_categories()`, `property_m->get()` |
 | POST | `/api/team/properties/create` | Yes | `Admin_model->add_properties()` |
-| POST | `/api/team/properties/status` | Yes | `Admin_model->update_status()` |
+| POST | `/api/team/leads/status` | Yes | `Admin_model->update_status()` |
 | GET | `/api/team/meetings` | Yes | `Admin_model->get_meetings()` |
 | GET | `/api/team/meetings/:id` | Yes | `Admin_model->get_single_meeting()` |
 | GET | `/api/team/brand-meetings` | Yes | `Admin_model->get_brand_meetings()` |
@@ -285,6 +287,7 @@ curl -b cookies.txt "https://example.com/api/team/auth/me"
 | GET | `/api/team/leads/filter` | Yes | own query builder over `email_history` |
 | GET | `/api/team/leads/filter/dropdowns` | Yes | `get_cities()`, `get_company_list()`, `get_employee_visible_pipeline_statuses()` |
 | POST | `/api/team/leads/info` | Yes | `Admin_model->insert_lead_detail()` |
+| POST | `/api/team/leads/:id/comments` | Yes | `Admin_model->add_lead_comment()` |
 | GET | `/api/team/followups` | Yes | `Admin_model->get_all_followups()` |
 | GET | `/api/team/followups/bell` | Yes | `get_active_followups()` + `get_active_followups_count()` |
 | POST | `/api/team/followups/create` | Yes | `Admin_model->add_lead_followup()` |
@@ -295,7 +298,7 @@ curl -b cookies.txt "https://example.com/api/team/auth/me"
 | POST | `/api/team/media/upload` | Yes | `Admin_model->insert_company_media_record()` |
 | POST | `/api/team/media/delete/:media_id` | Yes | `get_single_media_record()` + `remove_company_media_record()` |
 
-**53 routes, 52 public methods.** Every public method has at least one route.
+**54 routes, 53 public methods.** Every public method has at least one route.
 
 > `POST /api/team/media/upload` also handles the "Brand Location" case — when
 > `option_name` is sent as the literal string `Brand Location` it stores
@@ -698,7 +701,10 @@ curl -b cookies.txt "https://example.com/api/team/shows/Lahore"
 |--------|----------|-------|
 | GET | `/api/team/properties` | List properties + categories |
 | POST | `/api/team/properties/create` | Add property |
-| POST | `/api/team/properties/status` | Toggle `pipeline` / `deal_done` |
+
+> The pipeline/deal toggle is **not** a property endpoint. It moved to
+> `POST /api/team/leads/status` — see [Lead Status](#lead-status). The old
+> `POST /api/team/properties/status` path is dead and returns `404`.
 
 ---
 
@@ -745,24 +751,39 @@ curl -b cookies.txt -X POST "https://example.com/api/team/properties/create" \
 
 ---
 
-### POST `/api/team/properties/status`
+## Lead Status
 
-Update one flag on a property. This is the pipeline board toggle.
+Ported from the web pipeline-board toggle.
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| POST | `/api/team/leads/status` | Update a lead's `pipeline` / `deal_done` |
+
+### POST `/api/team/leads/status`
+
+Update one flag on a lead. This is the pipeline board toggle.
+
+> **This replaced `POST /api/team/properties/status`.** The old path is dead and
+> returns `404`. Despite the old name it was never a property: `id` is a **lead**
+> id (`email_history.e_id`), not a property id and not a task id. A client that
+> was sending a property id here was always wrong.
 
 **Auth required:** Yes
 
-**Request body** — all read from `$_POST`, so send form-encoded:
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | Yes | Property id |
-| `field` | Yes | `pipeline` or `deal_done` — **whitelisted server-side** |
-| `status` | Yes | New value for that field |
+**Request body** — **both JSON and form-encoded are accepted.** JSON was
+previously rejected with a misleading `Invalid field` error even on well-formed
+requests:
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `id` | Yes | int | Lead id. Must be numeric. |
+| `field` | Yes | string | `pipeline` or `deal_done` — **whitelisted server-side** |
+| `status` | Yes | string | New value for that field |
 
 **curl:**
 ```bash
-curl -b cookies.txt -X POST "https://example.com/api/team/properties/status" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "id=208&field=deal_done&status=1"
+curl -b cookies.txt -X POST "https://example.com/api/team/leads/status" \
+  -H "Content-Type: application/json" \
+  -d '{"id":208,"field":"deal_done","status":1}'
 ```
 
 **Success (200):**
@@ -774,11 +795,22 @@ curl -b cookies.txt -X POST "https://example.com/api/team/properties/status" \
 }
 ```
 
-**Errors:**
-| Code | Meaning |
-|------|---------|
-| 400 | `field` is not `pipeline` or `deal_done` |
-| 401 | No or expired session |
+### Ownership
+
+You can only update a lead assigned to you.
+
+| Code | Message | Meaning |
+|------|---------|---------|
+| 400 | `Invalid field` | `field` was not `pipeline` or `deal_done` |
+| 400 | `Invalid id` | `id` missing or not numeric |
+| 400 | `status is required` | `status` was empty |
+| 401 | `Unauthorized` | Session missing or expired |
+| 403 | `You can only update leads assigned to you.` | Lead belongs to another employee |
+| 404 | `Lead not found` | No lead with that id |
+
+A lead with **no assignee** (`employee_id` null or `0`) can be updated by any
+employee, so unassigned leads stay claimable. Don't gate the toggle on a cached
+assignment flag — just surface the `403`.
 
 ---
 
@@ -1328,12 +1360,23 @@ curl -b cookies.txt "https://example.com/api/team/requests"
 | Key | Type | Source | Included when |
 |-----|------|--------|---------------|
 | `categories` | array | `home_m->get_categories()` | always |
-| `requests` | object | `home_m->get_single_requests($id)` | always |
+| `requests` | **array** (one row) | `home_m->get_single_requests($id)` | always |
 | `comments` | array | `home_m->get_lead_comments($id)` | always |
-| `leads_detail` | object | `Admin_model->get_leads_detail($id)` | always |
+| `leads_detail` | **array** (images) | `Admin_model->get_leads_detail($id)` | always |
 | `lead_id` | int | echo of `:id` | always |
-| `company` | object | `Admin_model->get_company_poster($company_id)` | `company_id` given |
-| `login` | object | `Admin_model->get_vcard($emp_id)` | `emp_id` given |
+| `company` | object or `null` | `Admin_model->get_company_poster($company_id)` | key always present; populated when `company_id` given |
+| `login` | object or `null` | `Admin_model->get_vcard($emp_id)` | key always present; populated when `emp_id` given |
+
+> **`requests` and `leads_detail` arrive as single-element arrays, not objects.**
+> Reading fields straight off them yields `undefined` for everything and renders
+> as a blank screen rather than an error — unwrap the first element.
+>
+> `leads_detail` is the table `POST /leads/info` writes, so it holds the lead's
+> attached images: `{ id, lead_id, title, img_path, created_at }`.
+>
+> `company` and `login` are **always present** as keys but are `null` unless the
+> matching path segment was supplied. Bind to them as nullable; they are not
+> absent.
 
 **curl (minimal):**
 ```bash
@@ -1359,10 +1402,46 @@ curl -b cookies.txt "https://example.com/api/team/requests/12/company/1115/emp/5
   "message": "Single request details",
   "data": {
     "categories": [],
-    "requests": {},
-    "comments": [],
-    "leads_detail": {},
-    "lead_id": 12
+    "requests": [
+      {
+        "e_id": "12",
+        "e_firstname": "Ali",
+        "e_lastname": "Khan",
+        "e_emailaddress": "ali@example.com",
+        "e_phonenumber": "03001234567",
+        "e_message": "Details ?",
+        "pipeline": "1",
+        "meeting_type": "2",
+        "meeting_status": "1",
+        "deal_done": "0",
+        "e_co_id": "1115",
+        "employee_id": "5",
+        "req_comment": "",
+        "e_date": "12-Oct-2026"
+      }
+    ],
+    "comments": [
+      {
+        "comment_id": "201",
+        "lead_id": "12",
+        "comment": "Called, no answer",
+        "comment_date": "2026-10-12 14:30:00",
+        "emp_name": "Sumeet Khan",
+        "status": "0"
+      }
+    ],
+    "leads_detail": [
+      {
+        "id": "6658",
+        "lead_id": "12",
+        "title": "Call with Investor",
+        "img_path": "public/admin/leads/a1b2c3d4e5.jpg",
+        "created_at": "2026-10-12 09:00:00"
+      }
+    ],
+    "lead_id": 12,
+    "company": null,
+    "login": null
   }
 }
 ```
@@ -1490,7 +1569,7 @@ different endpoint and does not exist yet.
 | `brand` | int | `email_history.e_co_id` = `companies.co_id` |
 | `investor` | string | Free-text over `e_firstname`, `e_lastname`, `e_phonenumber`. Multi-word is AND across tokens, each token ORs the three columns. |
 | `deal_done` | string | `1`/`0`, or legacy `yes`/`no` |
-| `meeting_type` | string | `1`/`2`/`3`, or `none` to match `IS NULL` |
+| `meeting_type` | string | `1`/`2`/`3`, or `none` to match `IS NULL`. Codes per the web filter markup: `1` = Physical, `2` = Conference Call, `3` = Zoom |
 | `pipeline` | int | Cast to int server-side |
 | `start_date` | string | Any `strtotime`-parsable date; inclusive lower bound |
 | `end_date` | string | Any `strtotime`-parsable date; inclusive upper bound |
@@ -1524,6 +1603,7 @@ curl -b cookies.txt "https://example.com/api/team/leads/filter?start_date=2026-0
         "employee_id": "5",
         "deal_done": "0",
         "meeting_type": "1",
+        "meeting_status": "1",
         "pipeline": "1",
         "req_comment": "Called, will follow up",
         "co_name": "Mr.COD",
@@ -1875,16 +1955,56 @@ Attach an image to a lead.
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `lead_id` | Yes | Lead the image belongs to |
-| `title` | Yes | Caption |
-| `img_file` | Yes | One image file |
+| `lead_id` | Yes | Lead the image belongs to — from the screen context |
+| `title` | Yes | **Document type**, one of the 12 values below. Not a free-text caption. |
+| `img_file` | Yes | One image file. Field name is exactly `img_file`. |
+
+### The `title` field is a document type
+
+The web modal's dropdown is labelled **"Select a Lead:"** but its field name is
+`title`, and what it actually picks is the *kind of document* being attached. The
+lead comes from the screen the employee is already on.
+
+**There is no endpoint that returns this list.** Hardcode the 12 options.
+
+| Send as `title` | Show the user |
+|-----------------|---------------|
+| `Call with Investor` | Upload Screen shot of Employee Call with investor |
+| `Conference Call` | Upload Screen shot of Employee Conference Call with investor |
+| `Zoom Call` | Upload Screen shot of Employee Zoom Call with investor |
+| `Physical Meeting With Invester` | Upload Screen shot of Physical meeting of brand with investor |
+| `Franchise Model Share via Whatsapp` | Upload Screen Shot of Brand Franchise Model to share via whatsapp |
+| `Location Picture` | Upload location picture if investor has |
+| `Invoice` | Upload Invoice |
+| `Receipt` | Upload Receipt |
+| `Success Story` | Upload Success story |
+| `Commission` | Employe commission |
+| `V Card` | Employe V.card |
+| `Email` | Upload Email |
+
+**Do not fix the typos.** `Invester`, `Employe`, and lowercase `whatsapp` are the
+values on purpose. The value is stored as the caption, so "correcting" them writes
+a different string than the web writes and splits the data into two buckets the
+moment anyone filters by it.
+
+### Image URL
+
+`img_path` in the response is **relative**. Build the display URL as:
+
+```
+{BASE_URL}/{img_path}   →   https://example.com/public/admin/leads/a1b2c3d4e5.jpg
+```
+
+That path resolves directly — existing files are served without a rewrite.
+Persist the full URL, not the relative path, so you don't have to re-derive it
+later.
 
 **curl:**
 ```bash
 curl -b cookies.txt -X POST "https://example.com/api/team/leads/info" \
   -F "lead_id=1421" \
-  -F "title=Storefront" \
-  -F "img_file=@/path/to/storefront.jpg"
+  -F "title=Call with Investor" \
+  -F "img_file=@/path/to/call-screenshot.jpg"
 ```
 
 **Constraints:**
@@ -1906,10 +2026,109 @@ curl -b cookies.txt -X POST "https://example.com/api/team/leads/info" \
 ```
 
 **Errors:**
-| Code | Meaning |
-|------|---------|
-| 400 | `lead_id` or `title` missing, no file, or CI3 rejected the file — message is `display_errors('', '')` |
-| 500 | `insert_lead_detail()` returned falsy — the file is on disk but the row was not written |
+| Code | Message | Meaning |
+|------|---------|---------|
+| 400 | `Lead and title are required` | `lead_id` or `title` missing |
+| 400 | `No file was uploaded` | File part absent |
+| 401 | `Unauthorized` | No or expired session |
+| 403 | `You can only upload files for leads assigned to you.` | Lead belongs to another employee |
+| 404 | `Lead not found` | No lead with that id |
+| 500 | `Could not save lead in database` | Insert failed — **the file is already on disk** |
+
+### Ownership
+
+You can only upload against a lead assigned to you. Unassigned leads are open to
+everyone. The check runs **before** the file is written, so a `403` leaves nothing
+behind — rejected requests cannot accumulate orphaned uploads.
+
+Do not retry a `403`; it will always fail.
+
+### CI3 error messages arrive verbatim
+
+These are already user-readable — surface them as-is rather than replacing them
+with a generic message:
+
+| Message | Cause |
+|---------|-------|
+| `The filetype you are attempting to upload is not allowed.` | Wrong type |
+| `The file you are attempting to upload is larger than the permitted size.` | Over 5048 KB |
+| `The uploaded file exceeds the maximum allowed size in your PHP configuration file.` | PHP's own cap is lower than the endpoint's — the server's `upload_max_filesize` is the real limit |
+
+If you see the third message on a small file, it is a server configuration
+constraint, not a client bug.
+
+> **`Invoice` and `Receipt` accept images only.** A real invoice is normally a PDF
+> and will be rejected. Either ask the employee to screenshot it, or ask the
+> backend to add `pdf` to the allowed types.
+
+---
+
+## Lead Comments
+
+| Method | Endpoint | Notes |
+|--------|----------|-------|
+| POST | `/api/team/leads/:id/comments` | Add a comment to a lead |
+
+### POST `/api/team/leads/:id/comments`
+
+Lead comments were previously read-only; this is the only way to add one.
+
+**Auth required:** Yes
+
+**Path params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `:id` | int | Lead id — the same id used by `GET /api/team/requests/:id` |
+
+**Request body:**
+| Field | Required | Notes |
+|-------|----------|-------|
+| `comment` | Yes | Trimmed server-side; whitespace-only is rejected |
+
+**Both JSON and form-encoded are accepted** — unlike task comments.
+
+**curl:**
+```bash
+curl -b cookies.txt -X POST "https://example.com/api/team/leads/1421/comments" \
+  -H "Content-Type: application/json" \
+  -d '{"comment":"Called the investor, sending the model tomorrow"}'
+```
+
+**Success (201):**
+```json
+{
+  "status": true,
+  "message": "Lead comment added successfully",
+  "data": { "lead_id": 1421 }
+}
+```
+
+> **The response does not contain the new comment or its id.** After a successful
+> post, re-call `GET /api/team/requests/:id` and re-render the thread from
+> `data.comments`. Do not optimistically append the comment to local state.
+
+### Reading the thread back
+
+There is **no standalone `GET .../comments`** endpoint. The thread always comes
+back inside the lead detail call as `data.comments`.
+
+### Attribution is automatic
+
+You do not send your name. The server stamps the comment with the logged-in
+employee's name from the session. Unassigned leads can be commented on by any
+employee.
+
+### Ownership
+
+| Code | Message | Meaning |
+|------|---------|---------|
+| 400 | `Comment is required` | Missing, empty, or whitespace only |
+| 401 | `Unauthorized` | No or expired session |
+| 403 | `You can only comment on leads assigned to you.` | Lead belongs to another employee |
+| 404 | `Lead not found` | No lead with that id |
+| 500 | `Failed to add lead comment` | Insert rejected |
+
+Do not retry a `403` or `404`.
 
 ---
 
@@ -1921,7 +2140,8 @@ curl -b cookies.txt -X POST "https://example.com/api/team/leads/info" \
 | `201` | Created (comments, reports, brands, properties, companies, jobs, events) |
 | `400` | Bad request / missing required field / `field` not in the whitelist |
 | `401` | Unauthorized — no session, or `user_id` absent from the session |
-| `404` | Not found (company, employee) |
+| `403` | Forbidden — the record belongs to another employee (leads/status, leads/info, leads/:id/comments) |
+| `404` | Not found (company, employee, lead) |
 | `409` | Conflict — company name already registered |
 | `500` | Server error — the model rejected the write |
 
@@ -2018,10 +2238,16 @@ model sees an empty body and the write silently no-ops:
 | `POST /api/team/auth/login` | Yes — `email`, `password` |
 | `POST /api/team/tasks/:id/comments` | Yes — `task_id` |
 | `POST /api/team/tasks/:assign_id/status` | Yes — `status`, `taskid` |
-| `POST /api/team/properties/status` | **No** — `id`, `field`, `status` are `$_POST` only |
+| `POST /api/team/leads/status` | Yes — `id`, `field`, `status` all merge from JSON |
+| `POST /api/team/leads/:id/comments` | Yes — `comment` |
 | `POST /api/team/users/:id/update` | **No** — every field is `$_POST` only |
 | `POST /api/team/companies/create` | **No** — plus `$_FILES` for images |
 | `POST /api/team/brands/*`, `/reports/*`, `/properties/create`, `/jobs/*`, `/events/create` | **No** — `$_POST` only |
+
+> `POST /api/team/tasks/:id/comments` accepts JSON **only for `task_id`**. The
+> `comment` field itself is read from `$_POST`, so a JSON body arrives with an
+> empty comment and the server returns `500`. Send that one form-encoded. Lead
+> comments (`/leads/:id/comments`) accept JSON fine.
 
 ### Other behaviours worth knowing
 
@@ -2032,8 +2258,12 @@ model sees an empty body and the write silently no-ops:
   assigned and never checked. It now returns 500 on failure like its siblings.
 - **`users_update` forces `status` and `payment_status` to `'0'`.** Not a bug you can
   work around from the client — the handler hardcodes both.
-- **`properties/status` whitelists `field`.** Only `pipeline` and `deal_done` are
-  accepted; anything else is a 400. This is deliberate.
+- **`leads/status` whitelists `field`.** Only `pipeline` and `deal_done` are
+  accepted; anything else is a 400. This is deliberate. It also enforces
+  ownership — `403` for another employee's lead.
+- **`leads/info` and `leads/:id/comments` enforce ownership.** Both return `403`
+  for a lead assigned to someone else. Unassigned leads (`employee_id` null or
+  `0`) stay open to every employee.
 - **`emp_special` branches in the web UI only.** The web `Team` controller redirects
   admin-tier employees to `Team/...` and others to `Admin/...`. The API has no such
   branch — a `team_special` employee gets the same JSON and the same

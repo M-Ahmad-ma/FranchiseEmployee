@@ -45,3 +45,51 @@ export const RECORDS_PER_PAGE_OPTIONS: Option[] = [
   { label: '50', value: '50' },
   { label: '100', value: '100' },
 ];
+
+/**
+ * Document types for `POST /api/team/leads/info`.
+ *
+ * **The `title` field is not a caption.** The web modal's dropdown is
+ * mislabelled "Select a Lead:" but its field name is `title`, and what it
+ * actually picks is the kind of document being attached. The lead comes from the
+ * screen the employee is already on.
+ *
+ * There is no endpoint that returns this list, so it is hardcoded here.
+ *
+ * **Do not spellcheck these values.** `Invester`, `Employe` and lowercase
+ * `whatsapp` are the strings the server stores verbatim. "Fixing" them writes a
+ * different value than the web writes, which splits the data into two buckets
+ * the moment anyone filters by it.
+ */
+export const LEAD_INFO_OPTIONS: Option[] = [
+  {
+    value: 'Call with Investor',
+    label: 'Upload Screen shot of Employee Call with investor',
+  },
+  {
+    value: 'Conference Call',
+    label: 'Upload Screen shot of Employee Conference Call with investor',
+  },
+  {
+    value: 'Zoom Call',
+    label: 'Upload Screen shot of Employee Zoom Call with investor',
+  },
+  {
+    value: 'Physical Meeting With Invester',
+    label: 'Upload Screen shot of Physical meeting of brand with investor',
+  },
+  {
+    value: 'Franchise Model Share via Whatsapp',
+    label: 'Upload Screen Shot of Brand Franchise Model to share via whatsapp',
+  },
+  {
+    value: 'Location Picture',
+    label: 'Upload location picture if investor has',
+  },
+  { value: 'Invoice', label: 'Upload Invoice' },
+  { value: 'Receipt', label: 'Upload Receipt' },
+  { value: 'Success Story', label: 'Upload Success story' },
+  { value: 'Commission', label: 'Employe commission' },
+  { value: 'V Card', label: 'Employe V.card' },
+  { value: 'Email', label: 'Upload Email' },
+];

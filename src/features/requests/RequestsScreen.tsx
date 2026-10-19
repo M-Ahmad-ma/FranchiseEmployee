@@ -21,13 +21,15 @@ import {
   meetingTypeLabel,
   withMeetings,
   withPipelineNames,
+  MEETING_TYPE_LABELS,
   type LeadFilterDropdowns,
   type LeadFilterParams,
   type LeadFilterRow,
   type LeadRowWithMeetings,
 } from '../../services/leadsFilterService';
 import {
-  fetchAllMeetings,
+  clearMeetingsCache,
+  fetchAllMeetingsCached,
   type Meeting,
 } from '../../services/meetingService';
 import {
@@ -59,6 +61,27 @@ const meetingDay = (value: string) => {
     day: 'numeric',
     month: 'short',
   });
+};
+
+/**
+ * Label for a *meeting's* `meeting_type`.
+ *
+ * Deliberately not `meetingTypeLabel`, which maps a blank to "No Meeting" —
+ * that wording belongs to a NULL column on the lead, which is what the filter's
+ * `none` option selects. A meeting with no type recorded is simply unknown, so
+ * this falls back to the venue text, and to nothing at all if that is blank too.
+ */
+const meetingKind = (meeting: Meeting) => {
+  const code = meeting.type.trim().toLowerCase();
+  if (code) {
+    const label = MEETING_TYPE_LABELS[code];
+    if (label) {
+      return label;
+    }
+  }
+  // Venue text is inconsistent server-side ("call", "Call ", "Lahore "), so it
+  // is trimmed and title-cased rather than shown raw.
+  return meeting.venue.trim().replace(/\s+/g, ' ').replace(/^./, c => c.toUpperCase());
 };
 
 const columns: TableColumn<LeadRowWithMeetings>[] = [
@@ -105,7 +128,7 @@ const columns: TableColumn<LeadRowWithMeetings>[] = [
 
       // The meeting's own `meeting_type`, not the lead's — one lead can have
       // meetings of different types, and this column belongs to the row shown.
-      const parts = [meetingDay(meeting.date), meetingTypeLabel(meeting.type)];
+      const parts = [meetingDay(meeting.date), meetingKind(meeting)];
       if (!open) {
         parts.push('Done');
       }
@@ -190,7 +213,9 @@ export function RequestsScreen() {
   const loadMeetings = useCallback(async () => {
     setMeetingsFailed(false);
     try {
-      const result = await fetchAllMeetings();
+      // Cached: `/meetings` returns the employee's whole history with no lead
+      // filter, so the detail screen can reuse this instead of refetching.
+      const result = await fetchAllMeetingsCached();
       setMeetings(result.meetings);
       // A partial fetch still renders the rows it got — only a total failure
       // hides the column.
@@ -283,10 +308,25 @@ export function RequestsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meetings]);
 
-  // Pipeline names arrive with the dropdowns, so re-label once they land.
+  // Pipeline names arrive with the dropdowns, which are a separate request from
+  // the leads. Whichever lands second wins: if the rows are already on screen,
+  // re-label them in place rather than refetching. Without this the Status
+  // column showed the raw id (e.g. "8") until some other action reloaded the
+  // page — which is why it looked intermittent.
+  useEffect(() => {
+    if (dropdowns.pipelineStatuses.length === 0) {
+      return;
+    }
+    setRows(current =>
+      current.length === 0
+        ? current
+        : withPipelineNames(current, dropdowns.pipelineStatuses),
+    );
+  }, [dropdowns.pipelineStatuses]);
+
+  // Runs once on mount; every later change goes through Apply or the pager.
   useEffect(() => {
     void load();
-    // Runs once on mount; every later change goes through Apply or the pager.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -321,10 +361,14 @@ export function RequestsScreen() {
   /**
    * Pull-to-refresh is a full refresh: the rows and the two lookup lists, since
    * all three can go stale while the screen sits open.
+   *
+   * The meetings cache is dropped first — otherwise a meeting logged a minute
+   * ago would keep being served from cache and the column would look broken.
    */
   const refreshAll = useCallback(async () => {
     setPullRefreshing(true);
     try {
+      clearMeetingsCache();
       await Promise.all([load(), loadDropdowns(), loadMeetings()]);
     } finally {
       setPullRefreshing(false);

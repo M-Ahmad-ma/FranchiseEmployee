@@ -77,6 +77,23 @@ export const getSessionExpiresAt = () => sessionExpiresAt;
 export function clearSession() {
   sessionCookie = null;
   sessionExpiresAt = 0;
+  // Anything cached per-employee must go, or the next sign-in can read the
+  // previous employee's rows before its first response lands.
+  sessionClearedHandlers.forEach(handler => handler());
+}
+
+type SessionClearedHandler = () => void;
+const sessionClearedHandlers: SessionClearedHandler[] = [];
+
+/** Registers a callback fired whenever the session is torn down or expires. */
+export function onSessionCleared(handler: SessionClearedHandler): () => void {
+  sessionClearedHandlers.push(handler);
+  return () => {
+    const index = sessionClearedHandlers.indexOf(handler);
+    if (index >= 0) {
+      sessionClearedHandlers.splice(index, 1);
+    }
+  };
 }
 
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {

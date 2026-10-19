@@ -70,6 +70,7 @@ export const LEAD_FILTER_ROWS_FIXTURE = [
     employee_id: '5',
     deal_done: '0',
     meeting_type: '1',
+    meeting_status: '1',
     pipeline: '2',
     req_comment: 'Called, will follow up',
     co_name: 'Mr.COD',
@@ -86,6 +87,7 @@ export const LEAD_FILTER_ROWS_FIXTURE = [
     employee_id: '5',
     deal_done: '1',
     meeting_type: '2',
+    meeting_status: '1',
     pipeline: '4',
     req_comment: 'Agreed to send the fee breakdown',
     co_name: 'Metro Cash & Carry',
@@ -102,6 +104,9 @@ export const LEAD_FILTER_ROWS_FIXTURE = [
     employee_id: '5',
     deal_done: '0',
     meeting_type: '3',
+    // Status 0 with a type recorded is contradictory in real data, so this row
+    // has neither — it models a lead that has never been called.
+    meeting_status: '0',
     pipeline: '1',
     // A lead whose company and city rows were deleted — both names arrive null.
     req_comment: 'New enquiry from the website',
@@ -295,6 +300,7 @@ export const LEAD_DETAIL_FIXTURE = {
     e_co_id: '1115',
     deal_done: '0',
     meeting_type: '1',
+    meeting_status: '1',
     pipeline: '2',
     req_comment: 'Called, will follow up',
   },
@@ -303,7 +309,9 @@ export const LEAD_DETAIL_FIXTURE = {
     {
       id: '6658',
       lead_id: '1421',
-      title: 'Storefront',
+      // A value from LEAD_INFO_OPTIONS — the server stores the document type
+      // verbatim as the caption, not a free-text label.
+      title: 'Call with Investor',
       img_path: 'public/admin/leads/a1b2c3d4e5.jpg',
       created_at: '12-Oct-2026 09:00:00',
     },

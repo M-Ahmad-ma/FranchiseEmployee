@@ -42,6 +42,11 @@ interface Props {
   searchable?: boolean;
   /** Label for the filter box; defaults to "Search". */
   searchPlaceholder?: string;
+  /**
+   * Hard disable. Unlike `loading` this never resolves on its own — used when a
+   * server-side ownership check has already said the employee cannot act here.
+   */
+  disabled?: boolean;
 }
 
 export function SelectField({
@@ -60,6 +65,7 @@ export function SelectField({
   loading = false,
   searchable = false,
   searchPlaceholder = 'Search',
+  disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -75,6 +81,9 @@ export function SelectField({
   };
 
   const openModal = () => {
+    if (disabled) {
+      return;
+    }
     setOpen(true);
   };
 
@@ -202,10 +211,15 @@ export function SelectField({
         <TouchableOpacity
           testID={testID}
           activeOpacity={0.8}
+          disabled={disabled}
           onPress={openModal}
           accessibilityRole="button"
-          accessibilityState={{ busy: loading }}
-          className="flex-row items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5">
+          accessibilityState={{ busy: loading, disabled }}
+          className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+            disabled
+              ? 'border-neutral-100 bg-neutral-100'
+              : 'border-neutral-200 bg-white'
+          }`}>
           <Text className="font-lato text-xs text-neutral-700">
             {prefix ? `${prefix} ` : ''}
             {displayLabel}
@@ -232,10 +246,15 @@ export function SelectField({
       <TouchableOpacity
         testID={testID}
         activeOpacity={0.8}
+        disabled={disabled}
         onPress={openModal}
         accessibilityRole="button"
-        accessibilityState={{ busy: loading }}
-        className="bg-white rounded-2xl px-4 py-3.5 border border-neutral-200 flex-row items-center justify-between">
+        accessibilityState={{ busy: loading, disabled }}
+        className={`rounded-2xl px-4 py-3.5 border flex-row items-center justify-between ${
+          disabled
+            ? 'border-neutral-100 bg-neutral-100'
+            : 'border-neutral-200 bg-white'
+        }`}>
         <Text
           className={`font-lato text-base flex-1 ${
             selected ? 'text-neutral-900' : 'text-neutral-400'

@@ -1,5 +1,5 @@
 import { API_BASE_URL, USE_MOCK } from '../config';
-import { get, uploadMultipart } from './httpClient';
+import { get, postForm, uploadMultipart } from './httpClient';
 import { delay, pickString, resolveAssetPath } from './utils';
 import { LEAD_DETAIL_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
@@ -64,6 +64,13 @@ export interface LeadDetail {
   companyName: string;
   dealDone: string;
   meetingType: string;
+  /**
+   * `meeting_status` — "1" when the lead has a meeting recorded, "0" when it
+   * does not. Undocumented in the API spec but present on every lead row, and
+   * it answers "does this lead have a meeting" more directly than inferring it
+   * from a null `meeting_type`.
+   */
+  meetingStatus: string;
   pipeline: string;
   comment: string;
   comments: LeadComment[];
@@ -170,6 +177,7 @@ function normalizeLeadDetail(
     companyName: pickString(lead, ['co_name', 'lead_name', 'company_name']),
     dealDone: pickString(lead, ['deal_done']),
     meetingType: pickString(lead, ['meeting_type']),
+    meetingStatus: pickString(lead, ['meeting_status']),
     pipeline: pickString(lead, ['pipeline']),
     comment: pickString(lead, ['req_comment', 'comment']),
     comments: toRows(data?.comments).map(normalizeComment),
@@ -253,6 +261,67 @@ export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<
     ...extras,
     requests: row,
   });
+}
+
+/**
+ * POST /api/team/leads/:id/comments — add a comment to a lead's thread.
+ *
+ * Lead comments were read-only until this endpoint existed. Form-encoded is
+ * simplest here — unlike task comments, this one merges JSON too, so either
+ * encoding works.
+ *
+ * **The 201 response contains only `{ lead_id }`.** It does not return the new
+ * comment or its id, so the caller must re-read `GET /requests/:id` and
+ * re-render the thread from `data.comments`. Appending optimistically would put
+ * a row on screen with no id and no server-assigned timestamp.
+ */
+export async function addLeadComment(
+  leadId: string,
+  comment: string,
+): Promise<{ leadId: string }> {
+  if (USE_MOCK) {
+    await delay();
+    logMock(`leads/${leadId}/comments`, { comment: comment.trim() });
+    return { leadId };
+  }
+
+  const data = await postForm<{ lead_id?: string | number }>(
+    `leads/${encodeURIComponent(leadId)}/comments`,
+    { comment: comment.trim() },
+  );
+
+  return { leadId: String(data?.lead_id ?? leadId) };
+}
+
+/**
+ * POST /api/team/leads/status — the pipeline board toggle.
+ *
+ * Replaced `POST /properties/status`, which is dead. Despite the old name it was
+ * never a property: `leadId` is an `email_history.e_id`, not a property id.
+ *
+ * Ownership is enforced server-side with a `403`, so the caller deliberately
+ * does **not** pre-check a cached assignment flag — it would go stale and either
+ * hide a control the employee can still use, or offer one they cannot. Just send
+ * it and surface the `403`.
+ */
+export async function updateLeadStatus(
+  leadId: string,
+  field: 'pipeline' | 'deal_done',
+  status: string,
+): Promise<boolean> {
+  if (USE_MOCK) {
+    await delay();
+    logMock(`leads/status ${leadId} ${field}=${status}`, null);
+    return true;
+  }
+
+  const data = await postForm<{ status?: string } | boolean>('leads/status', {
+    id: leadId,
+    field,
+    status,
+  });
+
+  return data === true || (typeof data === 'object' && data?.status === 'success');
 }
 
 /** Result of `POST /leads/info` — the row id and the stored path. */

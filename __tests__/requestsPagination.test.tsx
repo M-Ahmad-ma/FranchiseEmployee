@@ -32,7 +32,8 @@ jest.mock('../src/services/leadsFilterService', () => {
 });
 
 jest.mock('../src/services/meetingService', () => ({
-  fetchAllMeetings: jest.fn(async () => ({ meetings: [], complete: true })),
+  fetchAllMeetingsCached: jest.fn(async () => ({ meetings: [], complete: true })),
+  clearMeetingsCache: jest.fn(),
 }));
 
 jest.mock('../src/navigation/AuthContext', () => ({

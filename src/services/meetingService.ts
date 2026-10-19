@@ -1,5 +1,5 @@
 import { USE_MOCK } from '../config';
-import { get, ApiError } from './httpClient';
+import { get, ApiError, onSessionCleared } from './httpClient';
 import { delay, pickString } from './utils';
 import { MEETINGS_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
@@ -156,6 +156,7 @@ export async function fetchAllMeetings(): Promise<MeetingsResult> {
     failures.push(`status=${CLOSED}: ${describe(closed.reason)}`);
   }
 
+
   if (failures.length === 2) {
     throw new Error(`/meetings failed — ${failures.join('; ')}`);
   }
@@ -167,6 +168,69 @@ export async function fetchAllMeetings(): Promise<MeetingsResult> {
 
   return { meetings: rows, complete: failures.length === 0 };
 }
+
+/**
+ * Shared, short-lived cache of the last successful fetch.
+ *
+ * `/meetings` returns the employee's entire history with no lead filter and no
+ * pagination — a few hundred rows. The leads table and the lead detail screen
+ * both need it, and neither benefits from fetching it twice. Cleared on
+ * sign-out via `clearMeetingsCache`, and skipped on a failed fetch so a
+ * transient error cannot poison the cache with an empty list.
+ */
+let cached: { meetings: Meeting[]; complete: boolean } | null = null;
+let inFlight: Promise<MeetingsResult> | null = null;
+
+export function clearMeetingsCache() {
+  cached = null;
+  inFlight = null;
+}
+
+/**
+ * `fetchAllMeetings`, deduplicated and memoised for a short window.
+ *
+ * Both call sites want "the meetings, as recently seen". Refetching 256 rows on
+ * every focus and every detail-screen entry is the single largest request in the
+ * app, and the data is history — it does not change minute to minute.
+ */
+export async function fetchAllMeetingsCached(
+  maxAgeMs = MEETINGS_CACHE_MS,
+): Promise<MeetingsResult> {
+  if (cached && Date.now() - cachedAt < maxAgeMs) {
+    return cached;
+  }
+  // Collapse concurrent callers onto one request.
+  if (inFlight) {
+    return inFlight;
+  }
+
+  inFlight = fetchAllMeetings()
+    .then(result => {
+      cachedAt = Date.now();
+      cached =
+        result.complete || result.meetings.length > 0 ? result : null;
+      inFlight = null;
+      return result;
+    })
+    .catch(error => {
+      // Must clear here too, not just on success. Leaving a rejected promise
+      // in `inFlight` would hand every later caller the same stale failure
+      // without a single network call — the column would be permanently dead.
+      inFlight = null;
+      throw error;
+    });
+
+  return inFlight;
+}
+
+let cachedAt = 0;
+
+/** Short enough that a newly logged meeting shows up, long enough to dedupe. */
+const MEETINGS_CACHE_MS = 30_000;
+
+// Meetings are scoped to the session's employee, so a sign-out must not leave
+// the previous employee's rows in the cache for the next one to read.
+onSessionCleared(clearMeetingsCache);
 
 /** Keeps the failure readable in a log line without dumping a whole envelope. */
 function describe(reason: unknown) {

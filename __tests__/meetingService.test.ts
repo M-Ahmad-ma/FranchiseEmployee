@@ -20,6 +20,7 @@ const lead = (id: string): LeadFilterRow => ({
   brandId: '',
   brand: '',
   meetingType: '',
+  meetingStatus: '',
   pipeline: '',
   pipelineLabel: '',
   dealDone: '',
