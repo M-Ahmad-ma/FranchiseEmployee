@@ -51,3 +51,59 @@ jest.mock('@react-native-documents/picker', () => ({
   isErrorWithCode: jest.fn(() => false),
   errorCodes: {},
 }));
+
+/**
+ * AsyncStorage is a native module, so it does not exist under Jest. An
+ * in-memory fake is written here rather than reusing the package's own mock:
+ * it keeps the suite independent of the installed package's internal layout,
+ * and `__resetStore` gives each test a clean slate.
+ *
+ * Deliberately mimics the real failure mode that matters — a failing disk write
+ * rejects rather than throwing synchronously — so `sessionStore`'s error
+ * handling is actually exercised.
+ */
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const store = new Map();
+
+  const ok = value => Promise.resolve(value);
+
+  return {
+    __esModule: true,
+    default: {
+      __store: store,
+      __resetStore: () => store.clear(),
+      getItem: key => ok(store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => {
+        store.set(key, String(value));
+        return ok(undefined);
+      },
+      removeItem: key => {
+        store.delete(key);
+        return ok(undefined);
+      },
+      // v3 renamed the batch methods: multiGet/set/remove -> getMany/setMany/removeMany.
+      getMany: keys =>
+        ok(
+          keys.reduce((acc, key) => {
+            acc[key] = store.has(key) ? store.get(key) : null;
+            return acc;
+          }, {}),
+        ),
+      setMany: entries => {
+        Object.entries(entries).forEach(([key, value]) =>
+          store.set(key, String(value)),
+        );
+        return ok(undefined);
+      },
+      removeMany: keys => {
+        keys.forEach(key => store.delete(key));
+        return ok(undefined);
+      },
+      clear: () => {
+        store.clear();
+        return ok(undefined);
+      },
+      getAllKeys: () => ok([...store.keys()]),
+    },
+  };
+});

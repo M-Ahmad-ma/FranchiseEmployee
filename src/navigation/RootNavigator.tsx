@@ -45,7 +45,14 @@ const navTheme = {
 };
 
 function AppNavigator() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isRestoring } = useAuth();
+
+  // Held on a blank screen until the stored session has been read. Rendering
+  // either branch before that resolves would flash Login at a user who is in
+  // fact still signed in.
+  if (isRestoring) {
+    return null;
+  }
 
   return (
     <Stack.Navigator

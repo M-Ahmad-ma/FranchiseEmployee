@@ -285,19 +285,8 @@ export function LeadDetailScreen() {
       subtitle={company || detail?.companyName || detail?.company?.name || 'Lead detail'}
       onRefresh={load}
       refreshing={loading}
+      showGoBack={true}
       showBell={false}>
-      {/* Back button sits above the layout title, matching the drawer's slot. */}
-      <View className="-mt-1 mb-3">
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.goBack()}
-          className={circleButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back">
-          <ArrowLeft size={18} color="#3F465C" />
-        </TouchableOpacity>
-      </View>
-
       {error && (
         <View className="mb-4">
           <AlertBanner message={error} />
@@ -433,12 +422,12 @@ export function LeadDetailScreen() {
           </Text>
         </View>
 
-        <View className="flex-row items-center gap-2">
-          <TrendingUp size={15} color="#5279AC" />
-          <Text className="font-lato text-sm text-neutral-900">
-            Status: {detail?.pipeline || '—'}
-          </Text>
-        </View>
+        {/* <View className="flex-row items-center gap-2"> */}
+        {/*   <TrendingUp size={15} color="#5279AC" /> */}
+        {/*   <Text className="font-lato text-sm text-neutral-900"> */}
+        {/*     Status: {detail?.pipeline || '—'} */}
+        {/*   </Text> */}
+        {/* </View> */}
       </Card>
 
       {/* ---------- Investor message ---------- */}

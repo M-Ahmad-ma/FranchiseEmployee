@@ -1,5 +1,6 @@
 import { SESSION_MAX_AGE_SECONDS, TEAM_API_BASE } from '../config';
 import { beginRequest } from './apiLogger';
+import { clearStoredSession, saveSession } from './sessionStore';
 
 /**
  * Transport for the Team API.
@@ -77,6 +78,9 @@ export const getSessionExpiresAt = () => sessionExpiresAt;
 export function clearSession() {
   sessionCookie = null;
   sessionExpiresAt = 0;
+  // The disk copy has to go too. Skipping this is how a sign-out looks clean
+  // but the next launch still restores the dead cookie.
+  void clearStoredSession();
   // Anything cached per-employee must go, or the next sign-in can read the
   // previous employee's rows before its first response lands.
   sessionClearedHandlers.forEach(handler => handler());
@@ -120,7 +124,26 @@ export function storeSessionCookie(setCookie: string | null): boolean {
     Date.now() +
     (Number.isFinite(maxAge) && maxAge > 0 ? maxAge : SESSION_MAX_AGE_SECONDS) *
       1000;
+  // Persist here rather than in the login call so a refreshed Set-Cookie also
+  // extends the stored session — that is what the server's Max-Age is for.
+  void saveSession(cookie, sessionExpiresAt);
   return true;
+}
+
+/**
+ * Rehydrates the in-memory jar from disk on launch.
+ *
+ * Separate from `storeSessionCookie` because the stored value is already a
+ * `ci_session=<value>` pair — there is no Set-Cookie header to parse.
+ *
+ * The caller is responsible for checking expiry and then *verifying* the
+ * cookie against the server. A stored value can be stale: the session may have
+ * been revoked, or the device clock may have drifted. Seeding the jar is what
+ * lets that verification request carry a cookie at all.
+ */
+export function restoreSession(cookie: string, expiresAt: number): void {
+  sessionCookie = cookie;
+  sessionExpiresAt = expiresAt;
 }
 
 function fireUnauthorized() {

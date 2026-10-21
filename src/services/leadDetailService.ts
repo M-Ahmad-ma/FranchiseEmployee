@@ -237,7 +237,7 @@ export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<
   const companyId = pickString(row, ['e_co_id', 'co_id']);
   const empId = pickString(row, ['employee_id', 'emp_id']);
 
-  console.log(row)
+  console.log(row, "row")
 
   let extras: Record<string, unknown> = {};
   try {

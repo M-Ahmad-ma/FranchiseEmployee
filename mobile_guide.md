@@ -214,7 +214,7 @@ GET /api/team/requests/1421/company/1115/emp/5
 | `lead_id` | always |
 | `company` | `company_id` in the path, else `null` |
 | `login` | `emp_id` in the path, else `null` |
-
+ 
 Practical advice: call the short URL for the detail screen, render it, then fire the
 long URL to backfill the company card and employee vCard. Don't block first paint on it.
 

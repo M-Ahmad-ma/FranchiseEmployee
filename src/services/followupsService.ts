@@ -1,6 +1,6 @@
 import { USE_MOCK } from '../config';
 import { get, postForm } from './httpClient';
-import { delay, pickString } from './utils';
+import { delay, pickString, toApiDate } from './utils';
 import { FOLLOWUPS_BELL_FIXTURE, FOLLOWUPS_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
 
@@ -44,6 +44,34 @@ export interface FollowUp {
 export interface FollowUpBell {
   followups: FollowUp[];
   count: number;
+}
+
+/**
+ * A follow-up's urgency, derived from its own status and date.
+ *
+ * `overdue` means still open and the date has already passed. Lives here
+ * rather than in a screen so the home preview and the follow-ups list can
+ * never disagree about which rows need chasing.
+ */
+export type FollowUpState = 'done' | 'overdue' | 'active';
+
+export function followUpState(followUp: FollowUp): FollowUpState {
+  if (followUp.status.toLowerCase() === 'done') {
+    return 'done';
+  }
+
+  const iso = toApiDate(followUp.date);
+  if (!iso) {
+    return 'active';
+  }
+
+  const [year, month, day] = iso.split('-').map(Number);
+  // Compared at UTC midnight so the test is date-only, not clock-sensitive.
+  const today = new Date();
+  return Date.UTC(year, month - 1, day) <
+    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+    ? 'overdue'
+    : 'active';
 }
 
 export interface NewFollowUp {

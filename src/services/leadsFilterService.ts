@@ -114,7 +114,7 @@ export const MEETING_TYPE_LABELS: Record<string, string> = {
   '1': 'Physical',
   '2': 'Conference Call',
   '3': 'Zoom',
-  none: 'No Meeting',
+  'none': 'No Meeting',
 };
 
 export const dealDoneLabel = (value: string) =>

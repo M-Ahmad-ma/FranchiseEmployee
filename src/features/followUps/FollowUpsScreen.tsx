@@ -12,10 +12,10 @@ import { TabGroup, type TabItem } from '../../shared/components/TabGroup';
 import { FollowUpSheet } from './FollowUpSheet';
 import {
   fetchFollowups,
+  followUpState,
   markFollowUpDone,
   type FollowUp,
 } from '../../services/followupsService';
-import { toApiDate } from '../../services/utils';
 import { ApiError } from '../../services/httpClient';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -24,29 +24,12 @@ const STATUS_TABS: TabItem[] = [
   { key: 'all', label: 'All' },
 ];
 
-/** Overdue means still open, and the follow-up date has already passed. */
-function isOverdue(followUp: FollowUp) {
-  if (followUp.status.toLowerCase() === 'done') {
-    return false;
-  }
-  const iso = toApiDate(followUp.date);
-  if (!iso) {
-    return false;
-  }
-  const [year, month, day] = iso.split('-').map(Number);
-  // Compared at UTC midnight so the test is date-only, not clock-sensitive.
-  const today = new Date();
-  return (
-    Date.UTC(year, month - 1, day) <
-    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
-  );
-}
-
 const statusPill = (row: FollowUp) => {
-  if (row.status.toLowerCase() === 'done') {
+  const state = followUpState(row);
+  if (state === 'done') {
     return { tone: 'bg-[#BEFFDB] text-[#00A572]', label: 'Done' };
   }
-  if (isOverdue(row)) {
+  if (state === 'overdue') {
     return { tone: 'bg-secondary-200 text-secondary-700', label: 'Overdue' };
   }
   return { tone: 'bg-primary-200 text-primary-700', label: 'Active' };

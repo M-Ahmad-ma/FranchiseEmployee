@@ -103,8 +103,8 @@ export async function fetchMeetings(status?: string): Promise<Meeting[]> {
       status === undefined
         ? MEETINGS_FIXTURE
         : // Filtered on the raw `meeting_status`, matching the shape the server
-          // sends rather than the normalised `status`.
-          MEETINGS_FIXTURE.filter(row => row.meeting_status === status)
+        // sends rather than the normalised `status`.
+        MEETINGS_FIXTURE.filter(row => row.meeting_status === status)
     ) as Record<string, unknown>[];
     const result = normalizeList(rows);
     logMock(
@@ -119,7 +119,6 @@ export async function fetchMeetings(status?: string): Promise<Meeting[]> {
     status === undefined ? undefined : { status },
   );
 
-  console.log("meetings data", data)
 
   return normalizeList(data?.meetings);
 }

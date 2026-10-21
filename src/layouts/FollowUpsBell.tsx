@@ -1,24 +1,74 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
+  PanResponder,
+  Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Bell, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Bell, ChevronRight, X } from 'lucide-react-native';
 import {
   fetchFollowupsBell,
+  followUpState,
   type FollowUp,
 } from '../services/followupsService';
-import { toApiDate } from '../services/utils';
 import { hasSession } from '../services/httpClient';
+import { FollowUpCard } from '../features/followUps/FollowUpCard';
 import type { RootStackParamList } from '../navigation/types';
 
 const REFRESH_INTERVAL_MS = 60_000;
+const DURATION = 260;
+/** Below 1:1 so the panel feels weighted rather than glued to the finger. */
+const SLIDE_FRICTION = 0.6;
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#001C39',
+  },
+  panel: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0A1A3D',
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: -6, height: 0 },
+    elevation: 24,
+  },
+});
+
+/**
+ * Notifications are ordered by what needs doing first, not by the order the
+ * server sent them: overdue rows on top, then the ones due soonest, then
+ * anything already closed. The endpoint returns the most recent rows, which
+ * is the wrong order for a queue you are working through.
+ */
+function byUrgency(a: FollowUp, b: FollowUp) {
+  const rank = { overdue: 0, active: 1, done: 2 } as const;
+  const diff = rank[followUpState(a)] - rank[followUpState(b)];
+  if (diff !== 0) {
+    return diff;
+  }
+  return (a.date || '').localeCompare(b.date || '');
+}
 
 /**
  * Header bell for `GET /api/team/followups/bell`.
@@ -27,17 +77,33 @@ const REFRESH_INTERVAL_MS = 60_000;
  * so a scheduled follow-up shows up without the user hunting for the screen.
  * A failed poll is swallowed — the badge is ambient information, and a network
  * blip should not surface an error over whatever the screen is doing.
+ *
+ * Tapping it opens a right-hand drawer rather than a centred dialog, so it
+ * reads as part of the app's navigation instead of an interruption. The
+ * drawer is read-only: it lists what the server already knows and links to
+ * the follow-ups screen, which is where anything is changed.
  */
 export function FollowUpsBell() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const panelWidth = Math.min(360, Math.round(width * 0.86));
 
   const [count, setCount] = useState(0);
   const [followups, setFollowups] = useState<FollowUp[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Whether the drawer is open. */
   const [open, setOpen] = useState(false);
+  /**
+   * Kept separate from `open` so the panel can animate out before the modal
+   * is torn down. Unmounting on `open` would drop the slide-out and the
+   * drawer would vanish instead of sliding away.
+   */
+  const [mounted, setMounted] = useState(false);
 
   const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progress = useRef(new Animated.Value(0)).current;
 
   const poll = useCallback(async () => {
     if (!hasSession() && !loading) {
@@ -77,6 +143,38 @@ export function FollowUpsBell() {
     };
   }, [poll]);
 
+  const openDrawer = useCallback(() => {
+    setOpen(true);
+    // Read on open rather than trusting the polled copy — the bell's badge
+    // may be a minute stale by the time the drawer is actually looked at.
+    void poll();
+  }, [poll]);
+
+  const closeDrawer = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    } else {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: DURATION,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished) {
+          setMounted(false);
+        }
+      });
+    }
+  }, [open, progress]);
+
   const openLead = (followUp: FollowUp) => {
     setOpen(false);
     if (!followUp.leadId) {
@@ -90,22 +188,64 @@ export function FollowUpsBell() {
     });
   };
 
-  const when = (followUp: FollowUp) => {
-    const iso = toApiDate(followUp.date);
-    const parts = iso
-      ? iso.split('-').reverse().join('/')
-      : followUp.date;
-    return [parts, followUp.time].filter(Boolean).join(' · ');
+  const goToFollowUps = () => {
+    setOpen(false);
+    navigation.navigate('FollowUps');
   };
+
+  /**
+   * Swipe the panel to the right to dismiss it. Only a clearly horizontal
+   * gesture claims the responder, so the list underneath still scrolls.
+   */
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 8 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dx > 0) {
+            progress.setValue(
+              Math.min(1, 1 + (gesture.dx / panelWidth) * SLIDE_FRICTION),
+            );
+          }
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dx > panelWidth * 0.25 || gesture.vx > 0.5) {
+            closeDrawer();
+            return;
+          }
+          Animated.timing(progress, {
+            toValue: 1,
+            duration: 200,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }).start();
+        },
+      }),
+    [closeDrawer, panelWidth, progress],
+  );
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [panelWidth, 0],
+  });
+
+  const backdropOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.45],
+  });
+
+  const ordered = useMemo(
+    () => [...followups].sort(byUrgency),
+    [followups],
+  );
 
   return (
     <>
       <TouchableOpacity
         activeOpacity={0.8}
-        onPress={() => {
-          void poll();
-          setOpen(true);
-        }}
+        onPress={openDrawer}
         className="w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center"
         accessibilityRole="button"
         accessibilityLabel={
@@ -133,121 +273,102 @@ export function FollowUpsBell() {
       </TouchableOpacity>
 
       <Modal
-        visible={open}
+        visible={mounted}
         transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        animationType="none"
+        onRequestClose={closeDrawer}
         statusBarTranslucent>
-        <View className="flex-1 bg-black/30 justify-center px-6">
-          <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            activeOpacity={1}
-            onPress={() => setOpen(false)}
-            accessibilityLabel="Close notifications"
-          />
+        <View style={styles.root}>
+          <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={closeDrawer}
+              accessibilityRole="button"
+              accessibilityLabel="Close notifications"
+            />
+          </Animated.View>
 
-          <View className="bg-white rounded-3xl max-h-[80%]">
-            <View className="flex-row items-center justify-between px-4 pt-4 pb-3">
-              <View className="flex-1">
-                <Text className="font-lato-black text-base text-neutral-900">
-                  Follow-ups
-                </Text>
-                <Text className="font-lato text-xs text-neutral-600 mt-0.5">
-                  {count === 0
-                    ? 'Nothing outstanding'
-                    : `${count} pending follow-up${count === 1 ? '' : 's'}`}
-                </Text>
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={[
+              styles.panel,
+              { width: panelWidth, transform: [{ translateX }] },
+            ]}>
+            {/* ----------------------------- Header ---------------------------- */}
+            <View
+              className="bg-primary-900 overflow-hidden px-5"
+              style={{ paddingTop: insets.top + 18, paddingBottom: 20 }}>
+              <View
+                pointerEvents="none"
+                className="absolute bg-primary-400 opacity-20 rounded-full"
+                style={{ width: 190, height: 190, top: -90, right: -60 }}
+              />
+
+              <View className="flex-row items-center gap-3">
+                <View className="flex-1">
+                  <Text className="font-lato-black text-lg text-white">
+                    Notifications
+                  </Text>
+                  <Text className="font-lato text-xs text-primary-300 mt-1">
+                    {count === 0
+                      ? 'Nothing outstanding'
+                      : `${count} pending follow-up${count === 1 ? '' : 's'}`}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={closeDrawer}
+                  className="w-9 h-9 rounded-full items-center justify-center"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.16)' }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close notifications">
+                  <X size={16} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setOpen(false)}
-                className="w-9 h-9 rounded-full bg-neutral-200 items-center justify-center"
-                accessibilityRole="button"
-                accessibilityLabel="Close">
-                <X size={16} color="#6F778E" />
-              </TouchableOpacity>
             </View>
 
-            {followups.length === 0 ? (
-              <View className="items-center px-6 pb-8 pt-2">
-                <View className="w-14 h-14 rounded-full bg-primary-200 items-center justify-center mb-3">
-                  <Bell size={22} color="#5279AC" />
+            {/* ------------------------------ List ----------------------------- */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ padding: 16, paddingBottom: 20 }}>
+              {ordered.length === 0 ? (
+                <View className="items-center py-10">
+                  <View className="w-14 h-14 rounded-full bg-primary-200 items-center justify-center mb-3">
+                    <Bell size={22} color="#5279AC" />
+                  </View>
+                  <Text className="font-lato-bold text-sm text-neutral-900 text-center">
+                    You&apos;re all caught up
+                  </Text>
+                  <Text className="font-lato text-xs text-neutral-600 text-center mt-1.5 leading-5">
+                    Nothing is waiting on you right now.
+                  </Text>
                 </View>
-                <Text className="font-lato-bold text-sm text-neutral-900 text-center">
-                  You&apos;re all caught up
-                </Text>
-                <Text className="font-lato text-xs text-neutral-600 text-center mt-1.5 leading-5">
-                  Nothing is waiting on you right now.
-                </Text>
-              </View>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {followups.map((followUp, index) => (
-                  <TouchableOpacity
+              ) : (
+                ordered.map((followUp, index) => (
+                  <FollowUpCard
                     key={followUp.id || index}
-                    activeOpacity={0.8}
-                    onPress={() => openLead(followUp)}
-                    className="px-4 py-3.5"
-                    style={
-                      index > 0
-                        ? { borderTopWidth: 1, borderTopColor: '#EEF0FF' }
-                        : undefined
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={`Follow up with ${followUp.investor || 'lead'} on ${when(followUp)}`}>
-                    <View className="flex-row items-center gap-3">
-                      <View className="w-8 h-8 rounded-full bg-tertiary-200 items-center justify-center">
-                        <Bell size={14} color="#0081A7" />
-                      </View>
+                    followUp={followUp}
+                    onPress={openLead}
+                    showComment
+                  />
+                ))
+              )}
+            </ScrollView>
 
-                      <View className="flex-1">
-                        <Text
-                          className="font-lato-bold text-sm text-neutral-900"
-                          numberOfLines={1}>
-                          {followUp.investor || 'Unnamed lead'}
-                        </Text>
-                        <Text
-                          className="font-lato text-xs text-neutral-700 mt-0.5"
-                          numberOfLines={1}>
-                          {[followUp.company, followUp.city]
-                            .filter(Boolean)
-                            .join(' · ') || 'No company on file'}
-                        </Text>
-                        {followUp.comment ? (
-                          <Text
-                            className="font-lato text-xs text-neutral-600 mt-1"
-                            numberOfLines={2}>
-                            {followUp.comment}
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      <View className="items-end">
-                        <View className="rounded-full bg-primary-200 px-2.5 py-1">
-                          <Text className="font-lato-bold text-[10px] text-primary-700">
-                            {when(followUp) || 'No date'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
+            {/* ----------------------------- Footer ---------------------------- */}
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => {
-                setOpen(false);
-                navigation.navigate('FollowUps');
-              }}
-              className="items-center border-t border-neutral-200 py-3.5"
-              accessibilityRole="button">
+              onPress={goToFollowUps}
+              className="flex-row items-center justify-center gap-1.5 border-t border-neutral-200 py-4"
+              accessibilityRole="button"
+              accessibilityLabel="View all follow-ups">
               <Text className="font-lato-bold text-sm text-primary-700">
                 View all follow-ups
               </Text>
+              <ChevronRight size={15} color="#5279AC" />
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </>

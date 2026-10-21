@@ -10,9 +10,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu } from 'lucide-react-native';
+import { ArrowLeft, Menu } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
 import { FollowUpsBell } from './FollowUpsBell';
+import { useNavigation } from '@react-navigation/native';
 
 const circleButton =
   'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
@@ -25,6 +26,7 @@ interface Props {
   /** Enables pull-to-refresh; usually the screen's own `load`. */
   onRefresh?: () => void;
   refreshing?: boolean;
+  showGoBack?: boolean;
   /**
    * Shows the follow-ups bell. On by default wherever the drawer is available;
    * pass false on screens where it would duplicate an existing bell.
@@ -40,10 +42,12 @@ export function DashboardLayout({
   onRefresh,
   refreshing = false,
   showBell = true,
+  showGoBack = false,
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { open } = useDrawer();
+  const navigation = useNavigation()
 
   return (
     <View className="flex-1 bg-light" style={{ paddingTop: insets.top }}>
@@ -77,6 +81,19 @@ export function DashboardLayout({
                   accessibilityLabel="Open navigation">
                   <Menu size={20} color="#3F465C" />
                 </TouchableOpacity>
+              )}
+
+              {showGoBack && (
+                <View className="">
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => navigation.goBack()}
+                    className={circleButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go back">
+                    <ArrowLeft size={18} color="#3F465C" />
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* {canGoBack && ( */}

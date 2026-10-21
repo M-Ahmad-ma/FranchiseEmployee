@@ -8,23 +8,19 @@ import { AlertBanner } from '../../shared/components/AlertBanner';
 import { Badge } from '../../shared/components/Badge';
 import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
-import { DataTable, type TableColumn } from '../../shared/components/DataTable';
 import { DateField } from '../../shared/components/DateField';
 import { Pagination } from '../../shared/components/Pagination';
 import { SelectField } from '../../shared/components/SelectField';
 import { TextField } from '../../shared/components/TextField';
 import { useGrid } from '../../shared/hooks/useGrid';
+import { LeadRequestCard } from './LeadRequestCard';
 import {
-  dealDoneLabel,
   fetchFilteredLeads,
   fetchLeadFilterDropdowns,
-  meetingTypeLabel,
   withMeetings,
   withPipelineNames,
-  MEETING_TYPE_LABELS,
   type LeadFilterDropdowns,
   type LeadFilterParams,
-  type LeadFilterRow,
   type LeadRowWithMeetings,
 } from '../../services/leadsFilterService';
 import {
@@ -50,124 +46,6 @@ const EMPTY_META: PageMeta = { total: 0, page: 1, per_page: 10, pages: 1 };
 
 const HELPER_TEXT =
   'Filters and pagination run on the server, so the count below is every lead matching your criteria — not just this page.';
-
-/** `17 Oct` from a `YYYY-MM-DD` meeting date. */
-const meetingDay = (value: string) => {
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return value;
-  }
-  return new Date(parsed).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-  });
-};
-
-/**
- * Label for a *meeting's* `meeting_type`.
- *
- * Deliberately not `meetingTypeLabel`, which maps a blank to "No Meeting" —
- * that wording belongs to a NULL column on the lead, which is what the filter's
- * `none` option selects. A meeting with no type recorded is simply unknown, so
- * this falls back to the venue text, and to nothing at all if that is blank too.
- */
-const meetingKind = (meeting: Meeting) => {
-  const code = meeting.type.trim().toLowerCase();
-  if (code) {
-    const label = MEETING_TYPE_LABELS[code];
-    if (label) {
-      return label;
-    }
-  }
-  // Venue text is inconsistent server-side ("call", "Call ", "Lahore "), so it
-  // is trimmed and title-cased rather than shown raw.
-  return meeting.venue.trim().replace(/\s+/g, ' ').replace(/^./, c => c.toUpperCase());
-};
-
-const columns: TableColumn<LeadRowWithMeetings>[] = [
-  { key: 'investor', title: 'Investor', width: 150 },
-  { key: 'phone', title: 'Phone', width: 130 },
-  { key: 'city', title: 'City', width: 110 },
-  { key: 'brand', title: 'Brand', width: 120 },
-  {
-    key: 'meetingType',
-    title: 'Type',
-    width: 115,
-    render: row => (
-      <Text className="font-lato text-sm text-neutral-900">
-        {meetingTypeLabel(row.meetingType)}
-      </Text>
-    ),
-  },
-  {
-    key: 'dealDone',
-    title: 'Deal',
-    width: 90,
-    render: row => (
-      <Text className="font-lato text-sm text-neutral-900">
-        {dealDoneLabel(row.dealDone) || '—'}
-      </Text>
-    ),
-  },
-  { key: 'date', title: 'Date', width: 110 },
-  {
-    key: 'nextMeeting',
-    title: 'Meeting',
-    width: 165,
-    render: row => {
-      const meeting = row.nextMeeting;
-      if (!meeting) {
-        return (
-          <Text className="font-lato text-sm text-neutral-400">None</Text>
-        );
-      }
-
-      // Mirrors pickPrimary: only an explicit "0" counts as closed, so an
-      // unrecognised status reads as still scheduled rather than done.
-      const open = meeting.status !== '0';
-
-      // The meeting's own `meeting_type`, not the lead's — one lead can have
-      // meetings of different types, and this column belongs to the row shown.
-      const parts = [meetingDay(meeting.date), meetingKind(meeting)];
-      if (!open) {
-        parts.push('Done');
-      }
-
-      return (
-        <View className="flex-row items-center gap-1.5">
-          <View
-            className={`rounded-full px-2 py-1 self-start ${open ? 'bg-amber-100' : 'bg-neutral-200'
-              }`}>
-            <Text
-              className={`font-lato-bold text-[11px] ${open ? 'text-amber-800' : 'text-neutral-600'
-                }`}
-              numberOfLines={1}>
-              {parts.filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-          {row.meetingCount > 1 ? (
-            <Text className="font-lato-bold text-[11px] text-neutral-500">
-              +{row.meetingCount - 1}
-            </Text>
-          ) : null}
-        </View>
-      );
-    },
-  },
-  {
-    key: 'pipelineLabel',
-    title: 'Status',
-    width: 130,
-    render: row => (
-      <View className="rounded-full bg-primary-200 px-3 py-1 self-start">
-        <Text className="font-lato-bold text-[11px] text-primary-700">
-          {row.pipelineLabel || '—'}
-        </Text>
-      </View>
-    ),
-  },
-];
-
 
 export function RequestsScreen() {
   const navigation =
@@ -375,6 +253,14 @@ export function RequestsScreen() {
     }
   }, [load, loadDropdowns, loadMeetings]);
 
+  const openLead = (row: LeadRowWithMeetings) =>
+    navigation.navigate('LeadDetail', {
+      leadId: row.id,
+      investor: row.investor,
+      phone: row.phone,
+      company: row.brand,
+      e_co_id: row.e_co_id,
+    });
 
   return (
     <DashboardLayout
@@ -529,77 +415,65 @@ export function RequestsScreen() {
       </Card>
 
       {/* ---------- Results ---------- */}
-      <Card className="bg-white rounded-2xl overflow-hidden mt-6">
-        <View className="flex-row items-center justify-between px-4 py-3 gap-3">
-          <SelectField
-            compact
-            prefix="Records per page:"
-            placeholder={perPage}
-            value={perPage}
-            options={RECORDS_PER_PAGE_OPTIONS}
-            onChange={v => {
-              setPerPage(v);
-              setPage(1);
-              // Reloads immediately rather than waiting for Apply — a page-size
-              // control that looks inert until you press something else reads
-              // as broken. The new size and page are passed through for the
-              // same stale-closure reason as above.
-              void load({ fromUser: true, page: 1, perPage: v });
-            }}
-            modalTitle="Records per page"
-          />
-          <Badge
-            label={`Filtered Requests: ${loading && rows.length === 0 ? '—' : meta.total
-              }`}
-            tone="primary"
-          />
+      {/* Not wrapped in a card: each lead is its own card, and a card inside a
+          card would double the shadow and the padding. */}
+      <View className="flex-row items-center justify-between gap-3 mt-6 mb-3">
+        <SelectField
+          compact
+          prefix="Records per page:"
+          placeholder={perPage}
+          value={perPage}
+          options={RECORDS_PER_PAGE_OPTIONS}
+          onChange={v => {
+            setPerPage(v);
+            setPage(1);
+            // Reloads immediately rather than waiting for Apply — a page-size
+            // control that looks inert until you press something else reads
+            // as broken. The new size and page are passed through for the
+            // same stale-closure reason as above.
+            void load({ fromUser: true, page: 1, perPage: v });
+          }}
+          modalTitle="Records per page"
+        />
+        <Badge
+          label={`Filtered Requests: ${
+            loading && rows.length === 0 ? '—' : meta.total
+          }`}
+          tone="primary"
+        />
+      </View>
+
+      {/* Scoped to the results only: the leads and the filters above are
+          unaffected, but a meeting shown as "None" would otherwise read as
+          fact. */}
+      {meetingsFailed ? (
+        <View className="mb-3">
+          <AlertBanner message="Could not load meetings. Meeting details are unavailable." />
         </View>
+      ) : null}
 
-        <View className="px-4 pb-4">
-          {/* Scoped to this table only: the leads and the filters above are
-              unaffected, but a column of "None" would otherwise read as fact. */}
-          {meetingsFailed ? (
-            <View className="mb-3">
-              <AlertBanner message="Could not load meetings. The Meeting column is unavailable." />
-
-            </View>
-          ) : null}
-
-          {/* Only the first load blanks the table. A reload keeps the rows on
-              screen — they are stale, not absent, and replacing them with a
-              spinner reads as "no results" and loses the user's place. */}
-          {rows.length === 0 ? (
-            loading ? (
-              <View className="items-center py-8">
-                <ActivityIndicator size="large" color="#5279AC" />
-              </View>
-            ) : (
-              <AlertBanner message="No requests found for this filter." />
-            )
-          ) : (
-            <View
-              style={{ opacity: loading ? 0.55 : 1 }}
-              accessibilityState={{ busy: loading }}>
-              <DataTable
-                columns={columns}
-                data={rows}
-                emptyMessage="No requests found."
-                onPressRow={row =>
-                  navigation.navigate('LeadDetail', {
-                    leadId: row.id,
-                    investor: row.investor,
-                    phone: row.phone,
-                    company: row.brand,
-                    e_co_id: row.e_co_id,
-                  })
-                }
-              />
-            </View>
-          )}
+      {/* Only the first load blanks the list. A reload keeps the cards on
+          screen — they are stale, not absent, and replacing them with a
+          spinner reads as "no results" and loses the user's place. */}
+      {rows.length === 0 ? (
+        loading ? (
+          <View className="items-center py-8">
+            <ActivityIndicator size="large" color="#5279AC" />
+          </View>
+        ) : (
+          <AlertBanner message="No requests found for this filter." />
+        )
+      ) : (
+        <View
+          style={{ opacity: loading ? 0.55 : 1 }}
+          accessibilityState={{ busy: loading }}>
+          {rows.map(row => (
+            <LeadRequestCard key={row.id} row={row} onPress={openLead} />
+          ))}
         </View>
+      )}
 
-        <Pagination meta={meta} onChange={changePage} disabled={loading} />
-      </Card>
+      <Pagination meta={meta} onChange={changePage} disabled={loading} />
     </DashboardLayout>
   );
 }

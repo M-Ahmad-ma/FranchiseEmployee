@@ -29,6 +29,7 @@ import {
   fetchFollowupsBell,
   type FollowUp,
 } from '../../services/followupsService';
+import { FollowUpCard } from '../followUps/FollowUpCard';
 
 
 const heroShadow: StyleProp<ViewStyle> = {
@@ -40,7 +41,6 @@ const heroShadow: StyleProp<ViewStyle> = {
 };
 
 const s = StyleSheet.create({
-  /** Decorative geometry behind the hero copy — never interactive. */
   heroDecor: {
     position: 'absolute',
     top: 0,
@@ -71,10 +71,6 @@ const s = StyleSheet.create({
   heroRule: {
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.16)',
-  },
-  rowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: '#EEF0FF',
   },
 });
 
@@ -111,15 +107,6 @@ function initialsFor(name?: string) {
   );
 }
 
-/**
- * Follow-up rows are tinted by urgency rather than pipeline stage — the detail
- * screen owns stage colouring, and here the date is what drives action.
- */
-const pillClass = (status: string) =>
-  status.toLowerCase() === 'done'
-    ? 'bg-[#BEFFDB] text-[#00A572]'
-    : 'bg-primary-200 text-primary-700';
-
 /* -------------------------------------------------------------------------- */
 /*  Static navigation launcher                                                 */
 /* -------------------------------------------------------------------------- */
@@ -147,15 +134,15 @@ const SHORTCUTS: Shortcut[] = [
     screen: 'FollowUps',
     title: 'Lead Follow-ups',
     subtitle: 'Leads to chase',
-    icon: <PhoneCall size={18} color="#0081A7" />,
-    disc: 'bg-tertiary-200',
+    icon: <PhoneCall size={18} color="#5279AC" />,
+    disc: 'bg-primary-200',
   },
   {
     screen: 'CompanyMedia',
     title: 'Company Media',
     subtitle: 'Images, videos & PDFs',
-    icon: <Images size={18} color="#BC5D00" />,
-    disc: 'bg-secondary-200',
+    icon: <Images size={18} color="#5279AC" />,
+    disc: 'bg-primary-200',
   },
 ];
 
@@ -223,6 +210,14 @@ export function HomeScreen() {
 
   const preview = followUps;
 
+  const openFollowUp = (followUp: FollowUp) =>
+    navigation.navigate('LeadDetail', {
+      leadId: followUp.leadId,
+      investor: followUp.investor,
+      phone: followUp.phone,
+      company: followUp.company,
+    });
+
 
   const metrics: { label: string; value: number; dot: string }[] = [
     {
@@ -247,7 +242,6 @@ export function HomeScreen() {
       showMenu
       onRefresh={refresh}
       refreshing={pullRefreshing}>
-      {/* ------------------------------ Hero ------------------------------ */}
       <Card
         className="bg-primary-900 rounded-3xl overflow-hidden mb-5"
         style={heroShadow}>
@@ -302,10 +296,6 @@ export function HomeScreen() {
         </View>
       </Card>
 
-      {/* --------------------------- At a glance -------------------------- */}
-      {/* No spinner here: this card and the preview below come from the same
-          fetch, and one indicator per fetch is the rule. A background refresh
-          leaves the old numbers up rather than blanking them to "—". */}
       <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1">
         At a glance
       </Text>
@@ -381,8 +371,8 @@ export function HomeScreen() {
         )}
       </View>
 
-      <Card className="bg-white rounded-2xl overflow-hidden">
-        {error ? (
+      {error ? (
+        <Card className="bg-white rounded-2xl">
           <View className="items-center px-6 py-8">
             <Text className="text-red-500 text-sm font-lato text-center">
               {error}
@@ -399,13 +389,17 @@ export function HomeScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : loading && preview.length === 0 ? (
-          // First load only. A refetch keeps the rows on screen instead of
-          // swapping them for a spinner.
+        </Card>
+      ) : loading && preview.length === 0 ? (
+        // First load only. A refetch keeps the cards on screen instead of
+        // swapping them for a spinner.
+        <Card className="bg-white rounded-2xl">
           <View className="items-center py-8">
             <ActivityIndicator size="large" color="#5279AC" />
           </View>
-        ) : preview.length === 0 ? (
+        </Card>
+      ) : preview.length === 0 ? (
+        <Card className="bg-white rounded-2xl">
           <View className="items-center px-6 py-8">
             <View className="w-14 h-14 rounded-full bg-primary-200 items-center justify-center mb-3">
               <Inbox size={24} color="#5279AC" />
@@ -418,52 +412,17 @@ export function HomeScreen() {
               to you will land here first.
             </Text>
           </View>
-        ) : (
-          preview.map((lead, index) => (
-            <TouchableOpacity
-              key={lead.id || index}
-              activeOpacity={0.8}
-              onPress={() =>
-                navigation.navigate('LeadDetail', {
-                  leadId: lead.leadId,
-                  investor: lead.investor,
-                  phone: lead.phone,
-                  company: lead.company,
-                })
-              }
-              className="px-4 py-3.5 flex-row items-center gap-3"
-              style={index > 0 ? s.rowDivider : undefined}
-              accessibilityRole="button"
-              accessibilityLabel={`Follow up with ${lead.investor}`}>
-              <View className="w-8 h-8 rounded-full bg-tertiary-200 items-center justify-center">
-                <PhoneCall size={14} color="#0081A7" />
-              </View>
-
-              <View className="flex-1">
-                <Text
-                  className="font-lato-bold text-sm text-neutral-900"
-                  numberOfLines={1}>
-                  {lead.investor || 'Unnamed lead'}
-                </Text>
-                <Text
-                  className="font-lato text-xs text-neutral-700 mt-0.5"
-                  numberOfLines={1}>
-                  {[lead.phone, lead.company, lead.date]
-                    .filter(Boolean)
-                    .join(' · ') || 'No contact details'}
-                </Text>
-              </View>
-
-              <View
-                className={`rounded-full px-3 py-1 ${pillClass(lead.status)}`}>
-                <Text className="font-lato-bold text-[11px]">
-                  {lead.date || 'Undated'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </Card>
+        </Card>
+      ) : (
+        // One card per follow-up, matching the lead request cards.
+        preview.map((followUp, index) => (
+          <FollowUpCard
+            key={followUp.id || index}
+            followUp={followUp}
+            onPress={openFollowUp}
+          />
+        ))
+      )}
     </DashboardLayout>
   );
 }
