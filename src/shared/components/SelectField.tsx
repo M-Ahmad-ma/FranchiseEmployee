@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   StyleProp,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
@@ -78,6 +79,7 @@ export function SelectField({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const { height } = useWindowDimensions();
   const selected = options.find(option => option.value === value);
   const displayLabel = selected ? selected.label : placeholder;
 
@@ -111,6 +113,57 @@ export function SelectField({
       ? 'Loading options…'
       : 'No options available';
 
+  /**
+   * One row.
+   *
+   * Memoised because `FlatList` re-renders its rows whenever the render
+   * function's identity changes, and an inline arrow is a new function on
+   * every render of the field.
+   */
+  const renderOption = useCallback(
+    ({ item }: { item: Option }) => {
+      const isSelected = item.value === value;
+
+      return (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            onChange(item.value);
+            closeModal();
+          }}
+          className="py-3 border-b border-neutral-200 flex-row items-center justify-between"
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSelected }}>
+          <Text
+            className={
+              isSelected
+                ? 'font-lato-bold text-base text-primary-700 flex-1'
+                : 'font-lato text-base text-neutral-900 flex-1'
+            }>
+            {item.label}
+          </Text>
+          {isSelected && <Check size={16} color="#5279AC" />}
+        </TouchableOpacity>
+      );
+    },
+    // `closeModal` is stable enough: it only sets state on this component.
+    [value, onChange],
+  );
+
+  /**
+   * The list's own height.
+   *
+   * `flexShrink` lets it give way when the card runs out of room, and the
+   * cap keeps a long list from pushing the card past the screen. It is a
+   * maximum rather than a fixed height so a short list still hugs its
+   * content.
+   */
+  const listStyle = {
+    flexGrow: 0,
+    flexShrink: 1,
+    maxHeight: Math.round(height * 0.55),
+  };
+
   const selectorModal = (
     <Modal
       visible={open}
@@ -140,8 +193,6 @@ export function SelectField({
                 autoCorrect={false}
                 autoCapitalize="none"
                 className="flex-1 font-lato text-sm text-neutral-900"
-                // The list re-renders on every keystroke, so this keeps typing
-                // smooth on the longer lists.
                 returnKeyType="search"
               />
               {query ? (
@@ -158,48 +209,42 @@ export function SelectField({
             </View>
           ) : null}
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled">
-            {loading ? (
-              // The modal opens straight away on tap, so this is what fills the
-              // gap while the list arrives — the tap always visibly registers.
-              <View className="items-center py-10">
-                <ActivityIndicator size="large" color="#5279AC" />
-                <Text className="font-lato text-xs text-neutral-500 mt-3">
-                  Loading options…
-                </Text>
-              </View>
-            ) : visibleOptions.length === 0 ? (
-              <Text className="font-lato text-sm text-neutral-500 text-center py-10 px-4">
-                {emptyMessage}
+          {loading ? (
+            // The modal opens straight away on tap, so this is what fills the
+            // gap while the list arrives — the tap always visibly registers.
+            <View className="items-center py-10">
+              <ActivityIndicator size="large" color="#5279AC" />
+              <Text className="font-lato text-xs text-neutral-500 mt-3">
+                Loading options…
               </Text>
-            ) : (
-              visibleOptions.map(option => {
-                const isSelected = option.value === value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      onChange(option.value);
-                      closeModal();
-                    }}
-                    className="py-3 border-b border-neutral-200 flex-row items-center justify-between">
-                    <Text
-                      className={
-                        isSelected
-                          ? 'font-lato-bold text-base text-primary-700 flex-1'
-                          : 'font-lato text-base text-neutral-900 flex-1'
-                      }>
-                      {option.label}
-                    </Text>
-                    {isSelected && <Check size={16} color="#5279AC" />}
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </ScrollView>
+            </View>
+          ) : (
+            /*
+             * A FlatList, not a ScrollView.
+             *
+             * A ScrollView renders every one of its children, so a dropdown
+             * holding a few hundred cities built a native view for each of
+             * them the moment the modal opened — and the modal could not be
+             * drawn until that was done, which is what made the tap feel
+             * slow. FlatList only mounts the rows on screen.
+             */
+            <FlatList
+              data={visibleOptions}
+              keyExtractor={option => option.value}
+              renderItem={renderOption}
+              style={listStyle}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              windowSize={7}
+              ListEmptyComponent={
+                <Text className="font-lato text-sm text-neutral-500 text-center py-10 px-4">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
 
           <TouchableOpacity
             activeOpacity={0.8}
@@ -224,11 +269,10 @@ export function SelectField({
           onPress={openModal}
           accessibilityRole="button"
           accessibilityState={{ busy: loading, disabled }}
-          className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${
-            disabled
-              ? 'border-neutral-100 bg-neutral-100'
-              : 'border-neutral-200 bg-white'
-          }`}>
+          className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${disabled
+            ? 'border-neutral-100 bg-neutral-100'
+            : 'border-neutral-200 bg-white'
+            }`}>
           <Text className="font-lato text-xs text-neutral-700">
             {prefix ? `${prefix} ` : ''}
             {displayLabel}
@@ -259,15 +303,13 @@ export function SelectField({
         onPress={openModal}
         accessibilityRole="button"
         accessibilityState={{ busy: loading, disabled }}
-        className={`rounded-2xl px-4 py-3.5 border flex-row items-center justify-between ${
-          disabled
-            ? 'border-neutral-100 bg-neutral-100'
-            : 'border-neutral-200 bg-white'
-        }`}>
+        className={`rounded-2xl px-4 py-3.5 border flex-row items-center justify-between ${disabled
+          ? 'border-neutral-100 bg-neutral-100'
+          : 'border-neutral-200 bg-white'
+          }`}>
         <Text
-          className={`font-lato text-base flex-1 ${
-            selected ? 'text-neutral-900' : 'text-neutral-400'
-          }`}
+          className={`font-lato text-base flex-1 ${selected ? 'text-neutral-900' : 'text-neutral-400'
+            }`}
           numberOfLines={1}>
           {displayLabel}
         </Text>
