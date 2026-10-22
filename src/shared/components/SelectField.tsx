@@ -43,6 +43,14 @@ interface Props {
   /** Label for the filter box; defaults to "Search". */
   searchPlaceholder?: string;
   /**
+   * A line of help under the field.
+   *
+   * Used where the control has a secondary behaviour that is not obvious from
+   * the label alone — picking the option that is already selected, for
+   * instance.
+   */
+  hint?: string;
+  /**
    * Hard disable. Unlike `loading` this never resolves on its own — used when a
    * server-side ownership check has already said the employee cannot act here.
    */
@@ -65,6 +73,7 @@ export function SelectField({
   loading = false,
   searchable = false,
   searchPlaceholder = 'Search',
+  hint,
   disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -268,6 +277,11 @@ export function SelectField({
           <ChevronDown size={18} color="#8990A8" />
         )}
       </TouchableOpacity>
+      {hint ? (
+        <Text className="text-neutral-700 font-lato text-xs mt-1.5 ml-1">
+          {hint}
+        </Text>
+      ) : null}
       {selectorModal}
     </View>
   );

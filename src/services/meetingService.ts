@@ -1,5 +1,5 @@
 import { USE_MOCK } from '../config';
-import { get, ApiError, onSessionCleared } from './httpClient';
+import { get, postForm, ApiError, onSessionCleared } from './httpClient';
 import { delay, pickString } from './utils';
 import { MEETINGS_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
@@ -237,4 +237,116 @@ function describe(reason: unknown) {
     return `${reason.status} ${reason.message}`;
   }
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Create                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A meeting to log.
+ *
+ * The field names are the web app's own meeting form, because the controller
+ * reads them by name — `venue`, `desc`, `com_id` and the rest are not this
+ * app's to rename.
+ */
+export interface NewMeeting {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  /** `HH:mm`, 24-hour. */
+  time: string;
+  /** Where it happened. */
+  venue: string;
+  /** What was discussed — sent as `desc`. */
+  description: string;
+  /** Company id — sent as `com_id`. */
+  companyId: string;
+  /** Company name — sent as `company`. */
+  company: string;
+  /** The company contact the meeting was with — sent as `person`. */
+  person: string;
+  /**
+   * `1`, `2` or `3`. Omitted when the meeting has no type.
+   *
+   * The server rejects anything else with "Invalid meeting_type", so the
+   * number goes on the wire and the label is only ever shown.
+   */
+  meetingType?: string;
+  /** Lead id the meeting belongs to — sent as `request_id`. */
+  leadId?: string;
+  /** Franchisee phone number. */
+  franchisePhone?: string;
+  /** Franchisee name. */
+  franchise?: string;
+  /** Contact email. */
+  email?: string;
+  /** Company phone number. */
+  companyContactNo?: string;
+}
+
+/**
+ * What the server reports back after creating a meeting.
+ *
+ * `meetingId` is present only when the server returned a row id, so it is
+ * optional — a create that succeeded without one is still a create.
+ */
+export interface CreatedMeeting {
+  requestId: string;
+  meetingType: string;
+  employeeName: string;
+  meetingId?: string;
+}
+
+/**
+ * POST /api/team/meetings/create — log a meeting.
+ *
+ * **The employee id and name are never sent.** The server stamps them from
+ * the session, and a client that sends them is writing to the wrong
+ * employee's row.
+ *
+ * The optional fields are dropped by the form encoder when they are blank, so
+ * a meeting with no type never carries an empty `meeting_type` — the server
+ * reads that as a stored type rather than as an absent one.
+ */
+export async function createMeeting(input: NewMeeting): Promise<CreatedMeeting> {
+  if (USE_MOCK) {
+    await delay();
+    logMock('meetings/create', input);
+    return {
+      requestId: input.leadId ?? '',
+      meetingType: input.meetingType ?? '',
+      employeeName: 'Mock Employee',
+    };
+  }
+
+  const data = await postForm<{
+    request_id?: string | number;
+    meeting_type?: string;
+    emp_name?: string;
+    meeting_id?: string | number;
+  }>('meetings/create', {
+    date: input.date,
+    time: input.time,
+    venue: input.venue,
+    desc: input.description,
+    com_id: input.companyId,
+    company: input.company,
+    person: input.person,
+    meeting_type: input.meetingType,
+    request_id: input.leadId,
+    franchisephoneno: input.franchisePhone,
+    franchise: input.franchise,
+    email: input.email,
+    company_contact_no: input.companyContactNo,
+  });
+
+  return {
+    requestId: String(data?.request_id ?? input.leadId ?? ''),
+    meetingType: data?.meeting_type ?? input.meetingType ?? '',
+    employeeName: data?.emp_name ?? '',
+    meetingId:
+      data?.meeting_id === undefined || data?.meeting_id === null
+        ? undefined
+        : String(data.meeting_id),
+  };
 }

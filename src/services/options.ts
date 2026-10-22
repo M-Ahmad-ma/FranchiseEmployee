@@ -39,6 +39,22 @@ export const MEETING_TYPE_OPTIONS: Option[] = [
   { label: MEETING_TYPE_LABELS['3'], value: '3' },
 ];
 
+/**
+ * The meeting types a new meeting can be logged with.
+ *
+ * Unlike `MEETING_TYPE_OPTIONS` — which is a *filter* and so offers "All" and
+ * "No Meeting" — this is the set the create endpoint accepts. It rejects
+ * anything that is not 1, 2 or 3 with "Invalid meeting_type", so the number
+ * is what goes on the wire and the label is only ever shown. There is no "All"
+ * here: a meeting has one type or none, and "none" is expressed by leaving
+ * the field empty rather than by picking a row.
+ */
+export const MEETING_TYPE_CREATE_OPTIONS: Option[] = [
+  { label: MEETING_TYPE_LABELS['1'], value: '1' },
+  { label: MEETING_TYPE_LABELS['2'], value: '2' },
+  { label: MEETING_TYPE_LABELS['3'], value: '3' },
+];
+
 export const RECORDS_PER_PAGE_OPTIONS: Option[] = [
   { label: '10', value: '10' },
   { label: '25', value: '25' },

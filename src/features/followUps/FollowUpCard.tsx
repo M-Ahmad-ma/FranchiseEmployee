@@ -105,24 +105,21 @@ export function FollowUpCard({ followUp, onPress, showComment = false }: Props) 
 
   const investor = followUp.investor.trim() || 'Unnamed lead';
   const when = formatWhen(followUp);
-  const place = [followUp.company, followUp.city].filter(Boolean).join(' · ');
 
   return (
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={() => onPress(followUp)}
       accessibilityRole="button"
-      accessibilityLabel={`Follow up with ${investor}${
-        when ? ` on ${when}` : ''
-      }`}
+      accessibilityLabel={`Follow up with ${investor}${when ? ` on ${when}` : ''
+        }`}
       className="bg-white rounded-2xl border border-neutral-200 p-4 mb-3"
       style={cardShadow}>
       {/* ---------- Name, status, chevron ---------- */}
       <View className="flex-row items-center gap-3">
         <View
-          className={`w-9 h-9 rounded-full items-center justify-center ${
-            discTone[state].disc
-          }`}>
+          className={`w-9 h-9 rounded-full items-center justify-center ${discTone[state].disc
+            }`}>
           <PhoneCall size={16} color={discTone[state].icon} />
         </View>
 
@@ -163,16 +160,7 @@ export function FollowUpCard({ followUp, onPress, showComment = false }: Props) 
         </View>
       ) : null}
 
-      {place ? (
-        <View className="flex-row items-center gap-1.5 mt-1.5">
-          <MapPin size={13} color="#8990A8" />
-          <Text
-            className="font-lato text-xs text-neutral-600 flex-1"
-            numberOfLines={1}>
-            {place}
-          </Text>
-        </View>
-      ) : null}
+
 
       {/* ---------- Comment ---------- */}
       {showComment && followUp.comment ? (

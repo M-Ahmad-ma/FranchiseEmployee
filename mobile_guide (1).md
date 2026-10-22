@@ -1,11 +1,11 @@
 # Mobile Integration Guide
 
-What changed in the API, and exactly how to use it. Four changes.
+What changed in the API, and exactly how to use it. Five changes.
 
 **Status:** changes are in the working tree, not committed yet. Nothing is live until
 this is deployed — pin your integration to a date, not a branch.
 
- Base URL in all examples: `https://example.com` dummy url 
+Base URL in all examples: `https://example.com`
 
 Each change below has a **Prompt for your agent** block. Paste it into your own AI
 assistant and it will do the work for you. They're written to be self-contained.
@@ -20,10 +20,15 @@ assistant and it will do the work for you. They're written to be self-contained.
 | 2 | Lead detail always returns `company` + `login` | Non-breaking. Keys are now `null` instead of absent. |
 | 3 | `POST /api/team/leads/info` now checks lead ownership | **Breaking.** Returns `403` where it used to return `201`. |
 | 4 | **New endpoint:** `POST /api/team/leads/:id/comments` | **New.** Lead comments were read-only; you can now post them. |
+| 5 | **New endpoint:** `POST /api/team/meetings/create` | **New.** Meetings were read-only; you can now log one. |
 
 Two further fixes were already uncommitted before this batch and are also live:
 `requests_single` route parameters were passing the wrong positions, and the login
 method's user-type argument was corrected.
+
+The team login now authenticates against the **same employee login the web app uses**
+(it used to call the user-login model), and the response body carries the employee's
+permission flags. Details in section 2. Nothing about the cookie flow changed.
 
 **Action items:**
 
@@ -33,11 +38,12 @@ method's user-type argument was corrected.
    with `403`. The web UI only ever offers your own leads, so this only bites if you
    built something that crossed that line.
 3. Wire up the new lead comment endpoint wherever you render a lead's comment thread.
-4. Everything else is additive.
+4. Wire up the new meeting endpoint wherever you log a meeting against a lead.
+5. Everything else is additive.
 
 ---
 
-## 2. Auth — unchanged, but you need this
+## 2. Auth — cookie based, one change in the response
 
 The API does **not** use Bearer tokens. It uses a CodeIgniter session cookie.
 
@@ -69,6 +75,20 @@ class SessionInterceptor(private val store: SessionStore) : Interceptor {
 **Swift/URLSession** — use an `HTTPCookieStorage` shared instance and let it handle
 this. Point `HTTPCookieStorage.shared.cookieAcceptPolicy = .always`, then just do normal
 requests; URLSession persists and replays the cookie for you. Handle `401` by re-logging in.
+
+**The login response now carries your permissions.** The team login authenticates
+against the same employee login the web app uses, and the 200 body returns the
+employee's permission flags alongside the profile:
+
+```json
+{ "status": true, "message": "Login successful",
+  "data": { "employee": { "emp_id": 5, "name": "Sumeet Khan", "...": "..." },
+            "permissions": { "company": "1", "request": "1", "meeting": "1", "...": "..." } } }
+```
+
+Use `data.permissions` to hide menu items the employee has no access to — same flags the
+web UI gates on. `data.employee.emp_special` is now the employee id (it used to be a
+`0`/`1` flag), so don't treat it as a boolean.
 
 ---
 
@@ -214,7 +234,7 @@ GET /api/team/requests/1421/company/1115/emp/5
 | `lead_id` | always |
 | `company` | `company_id` in the path, else `null` |
 | `login` | `emp_id` in the path, else `null` |
- 
+
 Practical advice: call the short URL for the detail screen, render it, then fire the
 long URL to backfill the company card and employee vCard. Don't block first paint on it.
 
@@ -407,7 +427,7 @@ The lead id is the path segment. `comment` is the only body field.
 | Path | `:id` | int | Yes | Lead id — the same id you use for `GET /api/team/requests/:id` |
 | Body | `comment` | string | Yes | Trimmed server-side; whitespace-only is rejected with `400` |
 
-Both JSON and form-encoded are accepted — unlike task comments (see section 7).
+Both JSON and form-encoded are accepted — unlike task comments (see section 8).
 
 ```bash
 curl -b cookies.txt -X POST "https://example.com/api/team/leads/1421/comments" \
@@ -456,7 +476,7 @@ suspend fun addLeadComment(
 ): ApiResponse<LeadCommentResult>
 ```
 
-`@FormUrlEncoded` works here. Do **not** reuse the task-comment method from section 7 —
+`@FormUrlEncoded` works here. Do **not** reuse the task-comment method from section 8 —
 it's a different endpoint with different behaviour.
 
 ### Prompt for your agent
@@ -481,7 +501,132 @@ it's a different endpoint with different behaviour.
 
 ---
 
-## 7. Known pitfalls, not fixed in this batch
+## 7. Create a meeting (new endpoint)
+
+```
+POST /api/team/meetings/create
+```
+
+**This is new.** `GET /api/team/meetings` and `GET /api/team/brand-meetings` were
+read-only — there was no way to log a meeting from mobile. Now there is.
+
+This backs the web app's meeting form, so the field names match the web form exactly.
+
+### Request
+
+JSON and form-encoded are both accepted.
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `date` | string | Yes | Meeting date |
+| `time` | string | Yes | Meeting time |
+| `venue` | string | Yes | Where it happened |
+| `desc` | string | Yes | What was discussed |
+| `com_id` | int | Yes | Company id |
+| `company` | string | Yes | Company name |
+| `person` | string | Yes | Company contact person |
+| `meeting_type` | string | No | `1`, `2` or `3`. Omit for no meeting type |
+| `franchisephoneno` | string | No | Franchise phone number |
+| `franchise` | string | No | Franchisee name |
+| `email` | string | No | Contact email |
+| `company_contact_no` | string | No | Company phone number |
+| `request_id` | int | No | Lead id to attach the meeting to. Aliases: `lead_id`, `request` |
+
+**Do not send the employee id or name.** `emp_id` and `emp_name` come from the session
+— the server stamps them.
+
+### `meeting_type` — numbers only
+
+| Send | Means |
+|------|-------|
+| `1` | Physical meeting |
+| `2` | Conference call |
+| `3` | Zoom call |
+| *(omit)* | No meeting type |
+
+**Send the number, not the label.** `"physical"`, `"all"`, or any other string returns
+`400 Invalid meeting_type`. `"All"` is a filter-only value used by the leads filter —
+it is not a stored type.
+
+### `request_id` is not checked
+
+Any numeric id is accepted and stored as sent. The server does not verify that the lead
+exists, and does not verify that it belongs to you. Send the lead you are working on.
+
+### Success (201)
+
+```json
+{ "status": true, "message": "Meeting added successfully",
+  "data": { "request_id": 1421, "meeting_type": "1", "emp_id": 5,
+            "emp_name": "Sumeet Khan",
+            "meeting_date": "2026-10-22", "meeting_time": "14:30" } }
+```
+
+`data.meeting_id` is present only when the server returns a row id — treat it as
+optional.
+
+### No SMS
+
+The web controller fires four SMS helpers after creating a meeting. Those are legacy
+and unused in the models, and the API does not call them. If you were expecting a text
+message to the company after logging a meeting — it does not happen.
+
+### Errors
+
+| Code | Message | Meaning |
+|------|---------|---------|
+| `400` | `date required, time required, ...` | Missing fields — the message lists every missing one, comma separated |
+| `400` | `Invalid meeting_type` | Not `1`, `2` or `3` |
+| `400` | `Invalid request_id` | `request_id` was present but not numeric |
+| `401` | `Unauthorized` | Session missing or expired |
+| `500` | `Error in insertion` | The insert was rejected |
+
+### Retrofit
+
+```kotlin
+@FormUrlEncoded
+@POST("api/team/meetings/create")
+suspend fun createMeeting(
+    @Field("date") date: String,
+    @Field("time") time: String,
+    @Field("venue") venue: String,
+    @Field("desc") desc: String,
+    @Field("com_id") comId: Int,
+    @Field("company") company: String,
+    @Field("person") person: String,
+    @Field("meeting_type") meetingType: String?,   // "1" | "2" | "3"
+    @Field("request_id") requestId: Int?
+): ApiResponse<MeetingCreatedResult>
+```
+
+### Prompt for your agent
+
+> Add a "log a meeting" form. It posts to `POST /api/team/meetings/create`, form-encoded
+> (`@FormUrlEncoded`), with the fields: `date`, `time`, `venue`, `desc`, `com_id`,
+> `company`, `person`, `meeting_type`, and `request_id`.
+>
+> `emp_id` and `emp_name` are NOT request fields — the server takes them from the
+> session. Do not send them.
+>
+> `meeting_type` is a numeric picker with exactly three options: `1` = Physical,
+> `2` = Conference call, `3` = Zoom. Send the number as a string. Do not send labels and
+> do not offer an "All" option — the server rejects anything other than 1/2/3 with a 400
+> `Invalid meeting_type`.
+>
+> `request_id` is the lead id the meeting belongs to. Send it when the form was opened
+> from a lead; omit it (null) when the meeting has no lead. The server does not validate
+> it, so only send a lead id you actually mean.
+>
+> On a 400, show the server's message verbatim — it lists the missing fields by name.
+> On a 401, re-login and retry once. Do not retry a 400.
+>
+> The response is a 201 with `data.request_id`, `data.meeting_type` and `data.emp_name`.
+> `data.meeting_id` may be absent. After a successful create, refresh the meeting list
+> with `GET /api/team/meetings` rather than appending the row locally.
+
+---
+
+## 8. Known pitfalls, not fixed in this batch
 
 These are live now and will cost you a debugging session if you're not aware.
 
@@ -509,14 +654,14 @@ segment is the *assignment* id — it comes from `data.assign.assign_id` in the 
 detail response, not from `data.task.id`. Send `status` in the body; `taskid` is
 optional.
 
-**No meeting create/update endpoint exists.** `GET /api/team/meetings` and
-`GET /api/team/brand-meetings` are read-only. Meetings are rows in the leads table
-filtered by `meeting_type`, created outside this API. If mobile needs to log a meeting,
-that endpoint doesn't exist yet — raise it.
+**Meetings can be created now.** `POST /api/team/meetings/create` exists — see
+section 7. **Update is still not exposed**: there is no `PUT`/`PATCH` meeting endpoint,
+so a meeting row cannot be edited after it is created. `GET /api/team/meetings` and
+`GET /api/team/brand-meetings` are still read-only.
 
 ---
 
-## 8. Verification checklist before you ship
+## 9. Verification checklist before you ship
 
 1. `grep -r "properties/status"` returns nothing.
 2. `POST /api/team/leads/status` with a JSON body returns `200`, not `400`.
@@ -528,8 +673,6 @@ that endpoint doesn't exist yet — raise it.
 8. Posting a lead comment to a lead you don't own returns `403`, and the composer
    disables rather than retrying.
 9. Your session interceptor survives a `401` and re-logins.
-
-
-
-
-the above provided code snippets are in kotlin the application is in react native bare so use the framework accordingly..
+10. Creating a meeting returns `201`, and the meeting shows up in `GET /api/team/meetings`.
+11. Sending `meeting_type: "physical"` returns `400 Invalid meeting_type` — you are
+    sending the number, not the label.

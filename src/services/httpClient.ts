@@ -26,6 +26,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The server's own message, with the HTTP status appended when the server
+ * did not send one.
+ *
+ * The Team API's failure envelopes do not always carry a `message`, and
+ * `unwrap` falls back to a generic "Something went wrong" string when one is
+ * missing. That text carries no information, and the status is usually the
+ * whole answer: 400 means the request was malformed, 403 that the record is
+ * not this employee's, 404 that it is gone, 500 that the server broke.
+ */
+export function describeApiError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const message = error.message.trim();
+    if (!message || message.includes('Something went wrong')) {
+      return `${fallback} (HTTP ${error.status})`;
+    }
+    return message;
+  }
+  return fallback;
+}
+
 interface Envelope<T> {
   status: boolean;
   message: string;
@@ -251,15 +272,91 @@ function unwrap<T>(status: number, raw: string | null): Envelope<T> {
   return payload;
 }
 
+/**
+ * Scans a body for every complete top-level JSON object in it.
+ *
+ * `POST /leads/status` answers with two documents in one body —
+ * `{"success":true}` followed by the real envelope — so `JSON.parse` of the
+ * whole body throws and the response reads as empty. The brace count is
+ * string-aware, so a brace inside a value does not throw the count off.
+ */
+function jsonObjectsIn(raw: string): unknown[] {
+  const found: unknown[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        try {
+          found.push(JSON.parse(raw.slice(start, index + 1)));
+        } catch {
+          // Not a JSON object after all — keep scanning.
+        }
+        start = -1;
+      } else if (depth < 0) {
+        depth = 0;
+      }
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Reads the envelope out of a response body.
+ *
+ * The normal case is a single JSON document and `JSON.parse` handles it. It
+ * fails on a body that holds more than one document, which is what
+ * `POST /leads/status` returns: `{"success":true}` and then the real
+ * envelope, with no separator between them. When that happens the body is
+ * scanned and the **last** object that looks like an envelope is used — the
+ * trailing one is the response, and anything the server printed before it is
+ * not.
+ */
 function safeParse<T>(raw: string | null): Envelope<T> | null {
   if (!raw) {
     return null;
   }
+
   try {
     return JSON.parse(raw) as Envelope<T>;
   } catch {
-    return null;
+    // Not a single document — fall through to the multi-document scan.
   }
+
+  const objects = jsonObjectsIn(raw);
+  for (let index = objects.length - 1; index >= 0; index -= 1) {
+    const candidate = objects[index];
+    if (candidate && typeof candidate === 'object' && 'status' in candidate) {
+      return candidate as Envelope<T>;
+    }
+  }
+
+  return null;
 }
 
 function assertLiveSession() {

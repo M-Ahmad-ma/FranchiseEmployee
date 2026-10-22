@@ -25,13 +25,13 @@ export interface LeadComment {
   employee: string;
 }
 
-export interface LeadCompany {
-  id: string;
-  name: string;
-  address: string;
-  contact: string;
-  website: string;
-}
+// export interface LeadCompany {
+//   id: string;
+//   name: string;
+//   address: string;
+//   contact: string;
+//   website: string;
+// }
 
 export interface LeadVCard {
   empId: string;
@@ -74,7 +74,7 @@ export interface LeadDetail {
   pipeline: string;
   comment: string;
   comments: LeadComment[];
-  company: LeadCompany | null;
+  // company: LeadCompany | null;
   vcard: LeadVCard | null;
   images: LeadImage[];
 }
@@ -157,7 +157,6 @@ function normalizeLeadDetail(
   data: Record<string, unknown>,
 ): LeadDetail {
   const lead = firstRow(data?.requests);
-  const company = data?.company as Record<string, unknown> | undefined;
   const vcard = data?.login as Record<string, unknown> | undefined;
 
   const first = pickString(lead, ['e_firstname', 'u_firstname']);
@@ -181,15 +180,6 @@ function normalizeLeadDetail(
     pipeline: pickString(lead, ['pipeline']),
     comment: pickString(lead, ['req_comment', 'comment']),
     comments: toRows(data?.comments).map(normalizeComment),
-    company: company
-      ? {
-        id: pickString(company, ['co_id', 'id']),
-        name: pickString(company, ['co_name', 'name']),
-        address: pickString(company, ['co_address', 'address']),
-        contact: pickString(company, ['co_contact', 'contact']),
-        website: pickString(company, ['co_website', 'website']),
-      }
-      : null,
     vcard: vcard
       ? {
         empId: pickString(vcard, ['emp_id', 'u_id']),
@@ -237,7 +227,13 @@ export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<
   const companyId = pickString(row, ['e_co_id', 'co_id']);
   const empId = pickString(row, ['employee_id', 'emp_id']);
 
-  console.log(row, "row")
+  if (__DEV__) {
+    // The short route is enough to read the ids, and it is one request
+    // cheaper than guessing whether the extras are needed.
+    console.log(
+      `[leadDetail] resolving leadId=${leadId} companyId=${companyId} empId=${empId}`,
+    );
+  }
 
   let extras: Record<string, unknown> = {};
   try {
@@ -251,7 +247,12 @@ export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<
     extras = {};
   }
 
-  console.log(extras, "extras")
+  if (__DEV__) {
+    console.log(
+      `[leadDetail] resolved leadId=${leadId} extras=${Object.keys(extras).join(',') || 'none'}`,
+    );
+  }
+
 
   // `base` carries the comment thread and the attached images, which the short
   // route always returns. `requests` is pinned last so the row the ids were
@@ -309,6 +310,14 @@ export async function updateLeadStatus(
   field: 'pipeline' | 'deal_done',
   status: string,
 ): Promise<boolean> {
+  if (__DEV__) {
+    // The `id` has to be numeric and the `field` has to be one the server
+    // whitelists, so the outgoing values are printed before the request.
+    console.log(
+      `[leadStatus] POST id=${leadId} field=${field} status=${status}`,
+    );
+  }
+
   if (USE_MOCK) {
     await delay();
     logMock(`leads/status ${leadId} ${field}=${status}`, null);

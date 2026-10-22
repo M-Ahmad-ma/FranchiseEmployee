@@ -23,14 +23,24 @@ import {
   fetchFilteredLeads,
   type LeadFilterRow,
 } from '../../services/leadsFilterService';
-import { ApiError } from '../../services/httpClient';
+import { ApiError, describeApiError } from '../../services/httpClient';
 import { toApiDate, type Option } from '../../services/utils';
 
 interface Props {
   visible: boolean;
   /** Pre-selects a lead — used when scheduling from a lead's own detail. */
   initialLeadId?: string;
+  /** The lead's name, shown when the lead is fixed to this one. */
+  leadLabel?: string;
   onClose: () => void;
+  /**
+   * Called when the sheet is closed *without* a follow-up being created.
+   *
+   * The lead detail screen opens this sheet as the second half of a stage
+   * change, and closes it by backing out — so it needs to hear about that
+   * case separately from a successful schedule, which calls `onClose` too.
+   */
+  onDismissed?: () => void;
   /** Called after a follow-up is created, so the queue can refetch. */
   onScheduled: () => void | Promise<void>;
 }
@@ -57,7 +67,9 @@ function todayIso() {
 export function FollowUpSheet({
   visible,
   initialLeadId,
+  leadLabel,
   onClose,
+  onDismissed,
   onScheduled,
 }: Props) {
   const [leads, setLeads] = useState<LeadFilterRow[]>([]);
@@ -104,11 +116,16 @@ export function FollowUpSheet({
     if (!visible) {
       return;
     }
+    // The lead is fixed on this path, so there is nothing to search for and
+    // no list worth fetching.
+    if (initialLeadId) {
+      return;
+    }
     const timer = setTimeout(() => {
       void loadLeads(leadQuery.trim() || undefined);
     }, 400);
     return () => clearTimeout(timer);
-  }, [leadQuery, visible, loadLeads]);
+  }, [initialLeadId, leadQuery, visible, loadLeads]);
 
   const leadOptions: Option[] = useMemo(
     () =>
@@ -130,10 +147,23 @@ export function FollowUpSheet({
     setError(null);
   };
 
-  const close = () => {
+  /**
+   * Closed by the person, without a follow-up being created.
+   *
+   * `onDismissed` fires first and separately from `onClose` because a
+   * successful schedule closes the sheet too — and the caller has to be able
+   * to tell the two apart.
+   */
+  const dismiss = () => {
     if (saving) {
       return;
     }
+    onDismissed?.();
+    onClose();
+  };
+
+  /** Closed because a follow-up was created — nothing was abandoned. */
+  const finish = () => {
     onClose();
   };
 
@@ -169,13 +199,25 @@ export function FollowUpSheet({
       };
       await createFollowUp(payload);
       reset();
-      onClose();
+      finish();
       await onScheduled();
     } catch (submitError) {
+      const status = submitError instanceof ApiError ? submitError.status : 0;
+
+      if (__DEV__) {
+        console.warn(
+          `[followUp] create FAILED leadId=${leadId} date=${isoDate} time=${time} status=${status}`,
+          submitError,
+        );
+      }
+
       setError(
         submitError instanceof ApiError && submitError.status === 400
           ? 'Check the date, time and comment, then try again.'
-          : 'Could not schedule the follow-up. Please try again.',
+          : describeApiError(
+              submitError,
+              'Could not schedule the follow-up. Please try again.',
+            ),
       );
     } finally {
       setSaving(false);
@@ -187,7 +229,7 @@ export function FollowUpSheet({
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={close}>
+      onRequestClose={dismiss}>
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -199,7 +241,7 @@ export function FollowUpSheet({
               </Text>
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={close}
+                onPress={dismiss}
                 disabled={saving}
                 className="w-9 h-9 rounded-full bg-neutral-200 items-center justify-center"
                 accessibilityRole="button"
@@ -212,34 +254,56 @@ export function FollowUpSheet({
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               className="px-5">
-              <TextField
-                label="Find lead"
-                placeholder="Search by name or phone"
-                value={leadQuery}
-                onChangeText={setLeadQuery}
-                rightSlot={<Search size={16} color="#A3ABC4" />}
-              />
-
-              {loadingLeads ? (
-                <View className="items-center py-4">
-                  <ActivityIndicator color="#5279AC" />
+              {initialLeadId ? (
+                // Opened from a lead's own detail, so the lead is fixed: the
+                // picker would only offer to change something that cannot
+                // change. It also used to render empty here — with the lead
+                // list never loaded for this path, the field fell back to its
+                // placeholder while the lead was preselected underneath.
+                <View className="mb-4">
+                  <Text className="text-neutral-700 font-lato-bold text-xs mb-1.5 ml-1">
+                    Lead
+                  </Text>
+                  <View className="rounded-2xl px-4 py-3.5 border border-neutral-200 bg-neutral-100 flex-row items-center">
+                    <Text
+                      className="font-lato text-base text-neutral-900 flex-1"
+                      numberOfLines={1}>
+                      {leadLabel || 'This lead'}
+                    </Text>
+                  </View>
                 </View>
               ) : (
-                <SelectField
-                  label="Lead"
-                  required
-                  placeholder={
-                    leadOptions.length
-                      ? 'Select a lead'
-                      : 'No leads match that search'
-                  }
-                  value={leadId}
-                  options={leadOptions}
-                  onChange={setLeadId}
-                  modalTitle="Select a lead"
-                  searchable
-                  searchPlaceholder="Search by name or phone"
-                />
+                <>
+                  <TextField
+                    label="Find lead"
+                    placeholder="Search by name or phone"
+                    value={leadQuery}
+                    onChangeText={setLeadQuery}
+                    rightSlot={<Search size={16} color="#A3ABC4" />}
+                  />
+
+                  {loadingLeads ? (
+                    <View className="items-center py-4">
+                      <ActivityIndicator color="#5279AC" />
+                    </View>
+                  ) : (
+                    <SelectField
+                      label="Lead"
+                      required
+                      placeholder={
+                        leadOptions.length
+                          ? 'Select a lead'
+                          : 'No leads match that search'
+                      }
+                      value={leadId}
+                      options={leadOptions}
+                      onChange={setLeadId}
+                      modalTitle="Select a lead"
+                      searchable
+                      searchPlaceholder="Search by name or phone"
+                    />
+                  )}
+                </>
               )}
 
               <View className="flex-row gap-4">
@@ -284,7 +348,7 @@ export function FollowUpSheet({
                 variant="secondary"
                 className="flex-1"
                 disabled={saving}
-                onPress={close}
+                onPress={dismiss}
               />
               <Button
                 title="Schedule"

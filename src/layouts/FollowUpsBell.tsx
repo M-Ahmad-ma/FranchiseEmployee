@@ -193,10 +193,6 @@ export function FollowUpsBell() {
     navigation.navigate('FollowUps');
   };
 
-  /**
-   * Swipe the panel to the right to dismiss it. Only a clearly horizontal
-   * gesture claims the responder, so the list underneath still scrolls.
-   */
   const panResponder = useMemo(
     () =>
       PanResponder.create({

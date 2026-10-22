@@ -53,7 +53,6 @@ const ITEMS: Item[] = [
     label: 'Lead Follow-ups',
     hint: 'Leads to chase',
     Icon: PhoneCall,
-    /** Overrides the dashboard metric with the live bell count. */
     followUpBadge: true,
   },
   {
@@ -230,13 +229,11 @@ export function DrawerContent({ active, onSignOut }: Props) {
 
               {count === undefined ? null : (
                 <View
-                  className={`rounded-full px-2.5 py-1 ${
-                    isActive ? 'bg-white' : 'bg-neutral-200'
-                  }`}>
-                  <Text
-                    className={`font-lato-bold text-[11px] ${
-                      isActive ? 'text-primary-800' : 'text-neutral-700'
+                  className={`rounded-full px-2.5 py-1 ${isActive ? 'bg-white' : 'bg-neutral-200'
                     }`}>
+                  <Text
+                    className={`font-lato-bold text-[11px] ${isActive ? 'text-primary-800' : 'text-neutral-700'
+                      }`}>
                     {count}
                   </Text>
                 </View>

@@ -377,48 +377,85 @@ export async function fetchLeadFilterDropdowns(): Promise<LeadFilterDropdowns> {
 }
 
 /**
- * Pipeline statuses only, memoised briefly.
+ * The whole dropdowns payload, memoised briefly.
  *
- * The lead detail screen needs them to label the stage picker, but it has no
- * cities or companies to justify pulling the whole dropdowns payload. These are
- * employee-scoped and change rarely, so one short cache lets it share a fetch
- * with the leads table instead of repeating it on every detail entry.
+ * The lead detail screen needs the pipeline statuses to label the stage
+ * picker, and the meeting form needs the companies to fill in the company a
+ * meeting was held with. Both come from the same endpoint, so the payload is
+ * cached once and read from — two callers must not turn into two requests
+ * for the same list. Employee-scoped and rarely changed, so a short cache
+ * lets the detail screen share a fetch with the leads table instead of
+ * repeating it on every entry.
  */
-let pipelineCache: { statuses: PipelineStatus[]; at: number } | null = null;
-let pipelineInFlight: Promise<PipelineStatus[]> | null = null;
+let dropdownsCache: { dropdowns: LeadFilterDropdowns; at: number } | null = null;
+let dropdownsInFlight: Promise<LeadFilterDropdowns> | null = null;
 
-export function clearPipelineStatusCache() {
-  pipelineCache = null;
-  pipelineInFlight = null;
+export function clearLeadFilterDropdownsCache() {
+  dropdownsCache = null;
+  dropdownsInFlight = null;
 }
 
-export async function fetchPipelineStatusesCached(
-  maxAgeMs = PIPELINE_CACHE_MS,
-): Promise<PipelineStatus[]> {
-  if (pipelineCache && Date.now() - pipelineCache.at < maxAgeMs) {
-    return pipelineCache.statuses;
+/** Kept for the pipeline statuses' own name; the cache is now shared. */
+export function clearPipelineStatusCache() {
+  clearLeadFilterDropdownsCache();
+}
+
+export async function fetchLeadFilterDropdownsCached(
+  maxAgeMs = DROPDOWNS_CACHE_MS,
+): Promise<LeadFilterDropdowns> {
+  if (dropdownsCache && Date.now() - dropdownsCache.at < maxAgeMs) {
+    return dropdownsCache.dropdowns;
   }
-  if (pipelineInFlight) {
-    return pipelineInFlight;
+  if (dropdownsInFlight) {
+    return dropdownsInFlight;
   }
 
-  pipelineInFlight = fetchLeadFilterDropdowns()
+  dropdownsInFlight = fetchLeadFilterDropdowns()
     .then(result => {
-      pipelineCache = { statuses: result.pipelineStatuses, at: Date.now() };
-      pipelineInFlight = null;
-      return result.pipelineStatuses;
+      dropdownsCache = { dropdowns: result, at: Date.now() };
+      dropdownsInFlight = null;
+      return result;
     })
     .catch(error => {
       // Same reasoning as the meetings cache: a rejected inFlight promise would
       // be replayed to every later caller with no network call at all.
-      pipelineInFlight = null;
+      dropdownsInFlight = null;
       throw error;
     });
 
-  return pipelineInFlight;
+  return dropdownsInFlight;
+}
+
+/**
+ * Pipeline statuses only.
+ *
+ * A thin view of the shared dropdowns cache — the screen that wants a status
+ * name should not have to know that the same payload also carries cities and
+ * companies.
+ */
+export async function fetchPipelineStatusesCached(
+  maxAgeMs = PIPELINE_CACHE_MS,
+): Promise<PipelineStatus[]> {
+  const dropdowns = await fetchLeadFilterDropdownsCached(maxAgeMs);
+  return dropdowns.pipelineStatuses;
+}
+
+/**
+ * Company options, for the meeting form's company picker.
+ *
+ * Same payload and same cache as the pipeline statuses, so opening the
+ * meeting form on a lead the status picker has already loaded costs no
+ * further request.
+ */
+export async function fetchCompanyOptionsCached(
+  maxAgeMs = PIPELINE_CACHE_MS,
+): Promise<Option[]> {
+  const dropdowns = await fetchLeadFilterDropdownsCached(maxAgeMs);
+  return dropdowns.companies;
 }
 
 const PIPELINE_CACHE_MS = 60_000;
+const DROPDOWNS_CACHE_MS = 60_000;
 
 /**
  * GET /api/team/leads/filter — leads assigned to this employee, filtered and

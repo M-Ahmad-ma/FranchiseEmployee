@@ -351,7 +351,6 @@ export function HomeScreen() {
         ))}
       </View>
 
-      {/* ------------------------- Needs a follow-up ------------------------ */}
       <View className="flex-row items-center justify-between mb-3 px-1">
         <Text className="font-lato-black text-lg text-neutral-900">
           Needs a follow-up

@@ -80,6 +80,9 @@ export async function signIn({
     { email: email.trim(), password },
   );
 
+
+  console.log("login data", data);
+
   if (!data?.employee) {
     throw new ApiError(0, 'Login response was malformed. Please try again.');
   }
@@ -89,7 +92,7 @@ export async function signIn({
     // Set-Cookie through fetch headers, so warn rather than fail silently.
     console.warn(
       '[auth] Login succeeded but no ci_session cookie was captured — ' +
-        'subsequent requests may 401 until you sign in again.',
+      'subsequent requests may 401 until you sign in again.',
     );
   }
 

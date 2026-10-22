@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   Text,
   TextInput,
@@ -19,6 +20,7 @@ import {
   CheckCircle2,
   Mail,
   MapPin,
+  MessageCircle,
   MessageSquare,
   Phone,
   Rows,
@@ -31,6 +33,7 @@ import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
 import { TextField } from '../../shared/components/TextField';
 import { FollowUpSheet } from '../followUps/FollowUpSheet';
+import { MeetingSheet } from '../meetings/MeetingSheet';
 import { LEAD_INFO_OPTIONS } from '../../services/options';
 import { SelectField } from '../../shared/components/SelectField';
 import {
@@ -44,6 +47,7 @@ import {
 } from '../../services/leadDetailService';
 import { fetchLeadFollowups, markFollowUpDone, type FollowUp } from '../../services/followupsService';
 import {
+  clearMeetingsCache,
   fetchAllMeetingsCached,
   type Meeting,
 } from '../../services/meetingService';
@@ -57,7 +61,9 @@ import {
 import { DEALS_DONE_OPTIONS } from '../../services/options';
 import { formatBytes, validateFile, type PickedFile } from '../../services/mediaService';
 import { dealDoneLabel, meetingTypeLabel } from '../../services/leadsFilterService';
-import { ApiError } from '../../services/httpClient';
+import { whatsappUrl } from '../../services/whatsapp';
+import { ApiError, describeApiError } from '../../services/httpClient';
+import { useAuth } from '../../navigation/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
 
 const circleButton =
@@ -84,10 +90,38 @@ const meetingKind = (meeting: Meeting | null) => {
     .replace(/^./, char => char.toUpperCase());
 };
 
+/**
+ * The pipeline stage that means "schedule a follow-up", matched by name.
+ *
+ * Pipeline status ids belong to the server
+ * (`get_employee_visible_pipeline_statuses()`) and are not documented, so a
+ * hardcoded id would break the moment the stages are renumbered. The name is
+ * what the employee reads in the picker, and it is spelled differently across
+ * deployments — "Followup", "Follow Up", "Follow-up Needed" — so spacing and
+ * punctuation are dropped before comparing.
+ */
+const isFollowUpStage = (name: string) =>
+  name.toLowerCase().replace(/[^a-z]/g, '').startsWith('followup');
+
+/**
+ * Newest first.
+ *
+ * The endpoint's own order is not documented, and a history that reads
+ * oldest-first makes the meeting someone just logged look like the one they
+ * forgot about.
+ */
+const sortByRecency = (meetings: Meeting[]) =>
+  [...meetings].sort((a, b) => {
+    const stamp = (meeting: Meeting) =>
+      `${meeting.date || ''} ${meeting.time || ''}`;
+    return stamp(b).localeCompare(stamp(a));
+  });
+
 export function LeadDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'LeadDetail'>>();
+  const { user } = useAuth();
   const { leadId, investor, phone, company, e_co_id } = route.params;
   // Only the Leads screen passes this. The other three entry points (home
   // preview, follow-ups list, bell) reach a lead without it, and the detail
@@ -101,9 +135,33 @@ export function LeadDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [scheduling, setScheduling] = useState(false);
+  const [meetingOpen, setMeetingOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [busyFollowUpId, setBusyFollowUpId] = useState<string | null>(null);
   const [followupsError, setFollowupsError] = useState(false);
+
+  /**
+   * A failed WhatsApp hand-off. Reported next to the button rather than
+   * through the page-level `error`, which belongs to the lead's own load —
+   * mixing the two would blank the screen over a link that would not open.
+   */
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+
+  /**
+   * The pipeline value the lead held before it was moved into the follow-up
+   * stage, so backing out of the form can put it back.
+   *
+   * A ref rather than state: this is a one-shot transaction, not something
+   * the screen renders. It is cleared as soon as it has been used.
+   */
+  const previousPipelineRef = useRef<string | null>(null);
+
+  /**
+   * The stage is being put back after the follow-up form was abandoned. The
+   * picker is disabled for the duration — a second change made mid-revert
+   * would race it, and the revert would land on top of it.
+   */
+  const [reverting, setReverting] = useState(false);
 
   // A 403 on either the comment or the stage update means the lead belongs to
   // another employee. Both controls then stay disabled for the rest of the visit
@@ -129,10 +187,38 @@ export function LeadDetailScreen() {
     [pipelineStatuses],
   );
 
+  /**
+   * The stage that opens the follow-up form, or null when the server has no
+   * such stage. Resolved by name because the ids are the server's own.
+   */
+  const followUpStageId = useMemo(
+    () =>
+      pipelineStatuses.find(status => isFollowUpStage(status.name))?.id ?? null,
+    [pipelineStatuses],
+  );
+
+  /**
+   * The server's own name for that stage, so the hint under the picker reads
+   * the way the picker does instead of a hardcoded guess.
+   */
+  const followUpStageName = useMemo(
+    () =>
+      pipelineStatuses.find(status => status.id === followUpStageId)?.name ??
+      'Follow up',
+    [pipelineStatuses, followUpStageId],
+  );
+
   const loadStageOptions = useCallback(async () => {
     setStageLoading(true);
     try {
-      setPipelineStatuses(await fetchPipelineStatusesCached());
+      const statuses = await fetchPipelineStatusesCached();
+      setPipelineStatuses(statuses);
+      if (__DEV__) {
+        // The status ids come from the server and are not documented, so they
+        // are printed once: this is what tells us which id the app believes
+        // is the follow-up stage.
+        console.log('[lead] pipeline statuses', statuses);
+      }
     } catch {
       // The label is cosmetic — the raw id still posts correctly, which is
       // exactly what the leads table does when its dropdown lookup misses.
@@ -156,8 +242,43 @@ export function LeadDetailScreen() {
     field: 'pipeline' | 'deal_done',
     value: string,
   ) => {
+    // Read before anything is patched below: this is where the lead was
+    // before the change, which is what a backed-out follow-up puts back.
+    const currentValue =
+      field === 'pipeline' ? detail?.pipeline : detail?.dealDone;
+
+    const opensFollowUpForm =
+      field === 'pipeline' &&
+      followUpStageId !== null &&
+      value === followUpStageId;
+
+    if (value === currentValue) {
+      // The lead already holds this value, so there is nothing to send. The
+      // follow-up stage is the case worth handling: choosing it again is how
+      // the form is re-opened, and there is no reason to make the employee
+      // wait for a request that cannot change anything.
+      if (opensFollowUpForm) {
+        // No stage change happened this time round, so there is nothing for
+        // the form to undo if it is closed. Clearing the ref matters: a
+        // leftover value from an earlier change would put the lead back into
+        // a stage it left long ago.
+        previousPipelineRef.current = null;
+        setScheduling(true);
+      }
+      return;
+    }
+
     setStageSaving(field);
     setStageError(null);
+
+    if (__DEV__) {
+      // Printed before the request so the outgoing values can be read next to
+      // the server's response — a wrong id here is the usual cause.
+      console.log(
+        `[lead] stage change leadId=${leadId} field=${field} value="${value}" followUpStageId=${followUpStageId}`,
+      );
+    }
+
     try {
       await updateLeadStatus(leadId, field, value);
       // The server confirmed the value we sent, so patch it locally rather than
@@ -172,7 +293,27 @@ export function LeadDetailScreen() {
           }
           : current,
       );
+
+      // Moving the lead into the follow-up stage is what schedules the
+      // follow-up — there is no separate button for it any more. The form
+      // opens only once the status change itself succeeded, so a rejected
+      // change never leaves a half-scheduled lead behind.
+      if (opensFollowUpForm) {
+        // Remembered so backing out of the form can undo the stage change.
+        previousPipelineRef.current = currentValue ?? null;
+        setScheduling(true);
+      }
     } catch (stageErrorCaught) {
+      const status =
+        stageErrorCaught instanceof ApiError ? stageErrorCaught.status : 0;
+
+      if (__DEV__) {
+        console.warn(
+          `[lead] stage update FAILED leadId=${leadId} field=${field} value="${value}" status=${status}`,
+          stageErrorCaught,
+        );
+      }
+
       if (stageErrorCaught instanceof ApiError) {
         if (stageErrorCaught.status === 403) {
           setStageForbidden(true);
@@ -183,7 +324,9 @@ export function LeadDetailScreen() {
           setStageError('That lead no longer exists.');
           return;
         }
-        setStageError(stageErrorCaught.message || 'Could not update the stage.');
+        setStageError(
+          describeApiError(stageErrorCaught, 'Could not update the stage.'),
+        );
         return;
       }
       setStageError('Could not update the stage.');
@@ -196,6 +339,9 @@ export function LeadDetailScreen() {
   // same way the leads table does — by the meeting it actually has — rather
   // than by the lead's stored `meeting_type`, which can disagree with it.
   const [leadMeeting, setLeadMeeting] = useState<Meeting | null>(null);
+
+  /** Every meeting logged against this lead, newest first. */
+  const [leadMeetings, setLeadMeetings] = useState<Meeting[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,8 +360,19 @@ export function LeadDetailScreen() {
       } else {
         setDetail(null);
 
-        console.warn('lead detail failed', detailResult.reason);
-        setError('Something went wrong. Please try again.');
+        // The reason used to be swallowed here and replaced with a generic
+        // sentence, which left a failed read indistinguishable from a server
+        // with no message to give.
+        console.warn(
+          `[lead] detail fetch FAILED leadId=${leadId}`,
+          detailResult.reason,
+        );
+        setError(
+          describeApiError(
+            detailResult.reason,
+            'Something went wrong. Please try again.',
+          ),
+        );
       }
 
       if (followupResult.status === 'fulfilled') {
@@ -226,14 +383,13 @@ export function LeadDetailScreen() {
       }
 
       if (meetingsResult.status === 'fulfilled') {
-        setLeadMeeting(
-          pickPrimaryMeeting(
-            meetingsForLead(meetingsResult.value.meetings, leadId),
-          ),
-        );
+        const mine = meetingsForLead(meetingsResult.value.meetings, leadId);
+        setLeadMeetings(sortByRecency(mine));
+        setLeadMeeting(pickPrimaryMeeting(mine));
       } else {
         // Non-fatal: the lead's own meeting_type still renders below.
         console.warn('meetings for lead failed', meetingsResult.reason);
+        setLeadMeetings([]);
         setLeadMeeting(null);
       }
     } finally {
@@ -265,7 +421,76 @@ export function LeadDetailScreen() {
     }
   }, []);
 
+  /**
+   * Puts the lead back where it was when the follow-up form was closed
+   * without a follow-up being booked.
+   *
+   * Moving a lead into the follow-up stage and scheduling the follow-up are
+   * one action, so leaving the form without scheduling has to undo the stage
+   * change — otherwise the lead would sit in a stage that promises a
+   * follow-up that does not exist.
+   */
+  const revertFollowUpStage = async () => {
+    const previous = previousPipelineRef.current;
+    previousPipelineRef.current = null;
+
+    // The lead was already in the follow-up stage when the form opened, so
+    // there is nothing to put back. The same goes for a lead that had no
+    // stage at all — there is no value to restore.
+    if (!previous || previous === followUpStageId) {
+      return;
+    }
+
+    setReverting(true);
+    setStageError(null);
+
+    if (__DEV__) {
+      console.log(
+        `[lead] reverting stage leadId=${leadId} back to "${previous}"`,
+      );
+    }
+
+    try {
+      await updateLeadStatus(leadId, 'pipeline', previous);
+      setDetail(current =>
+        current ? { ...current, pipeline: previous } : current,
+      );
+    } catch (revertError) {
+      // The lead is stuck in the follow-up stage on the server, with no
+      // follow-up to show for it. Say so, and re-read the lead so the picker
+      // shows what the server actually holds rather than what was intended.
+      setStageError(
+        describeApiError(revertError, 'Could not undo the stage change.'),
+      );
+      void load();
+    } finally {
+      setReverting(false);
+    }
+  };
+
   const title = investor || detail?.investor || 'Lead';
+
+  /**
+   * The follow-up exists now, so the stage change that opened the form is
+   * settled rather than a transaction waiting to be undone.
+   */
+  const onFollowUpScheduled = async () => {
+    previousPipelineRef.current = null;
+    await load();
+  };
+
+  /**
+   * A meeting was logged, so the meeting list is re-read rather than patched.
+   *
+   * The meetings endpoint has no lead filter, so the rows for this lead come
+   * from a fetch of the employee's whole history — which is cached. The cache
+   * is dropped first, otherwise the meeting would not appear until it aged
+   * out and the screen would look like the save had failed.
+   */
+  const onMeetingCreated = async () => {
+    clearMeetingsCache();
+    await load();
+  };
 
   /**
    * `meeting_status` is "1" when the lead has a meeting and "0" when it does
@@ -277,12 +502,48 @@ export function LeadDetailScreen() {
     (!detail?.meetingStatus && Boolean(detail?.meetingType));
 
 
-  const phoneNumber = detail?.phone || phone;
+  // The route's `phone` is optional — only the Leads screen passes it — so it
+  // is coalesced into a plain string for the contact rows and the WhatsApp
+  // link, which both read it as "may be missing" rather than "is a string".
+  const phoneNumber = detail?.phone || phone || '';
+
+  /**
+   * The opening line of the WhatsApp chat. The employee's name is on the
+   * signed-in profile, so the lead opens the chat already knowing who is
+   * writing — it is still editable in WhatsApp.
+   */
+  const whatsappGreeting = user?.name
+    ? `Hello, this is ${user.name} from the franchise team.`
+    : 'Hello, this is the franchise team.';
+
+  /**
+   * Hands the lead over to WhatsApp with the number already dialled in.
+   *
+   * The https `wa.me` link opens WhatsApp directly when the app is installed
+   * and falls back to the Play Store when it is not, so it never dead-ends.
+   * A rejected `openURL` means the device has nothing that can handle it.
+   */
+  const openWhatsApp = () => {
+    const url = whatsappUrl(phoneNumber, whatsappGreeting);
+
+    if (!url) {
+      setWhatsappError('This lead has no phone number to message.');
+      return;
+    }
+
+    setWhatsappError(null);
+    Linking.openURL(url).catch(() => {
+      setWhatsappError('Could not open WhatsApp on this device.');
+    });
+  };
+
+
+  console.log(detail, "details")
 
   return (
     <DashboardLayout
       title={title}
-      subtitle={company || detail?.companyName || detail?.company?.name || 'Lead detail'}
+      subtitle={company || detail?.companyName || 'Lead detail'}
       onRefresh={load}
       refreshing={loading}
       showGoBack={true}
@@ -313,8 +574,13 @@ export function LeadDetailScreen() {
           onChange={value => void onStageChange('pipeline', value)}
           searchable
           searchPlaceholder="Search statuses"
-          loading={stageLoading || stageSaving !== null}
-          disabled={stageForbidden}
+          loading={stageLoading || stageSaving !== null || reverting}
+          disabled={stageForbidden || reverting}
+          hint={
+            followUpStageId !== null && detail?.pipeline === followUpStageId
+              ? `This lead is in ${followUpStageName}. Choosing it again opens the follow-up form.`
+              : undefined
+          }
         />
 
         <Text className="text-neutral-700 font-lato-bold text-xs mb-1.5 ml-1">
@@ -357,9 +623,27 @@ export function LeadDetailScreen() {
 
       {/* ---------- Contact ---------- */}
       <Card className="bg-white rounded-2xl p-4">
-        <Text className="font-lato-bold text-base text-neutral-900 mb-3">
-          Contact
-        </Text>
+        <View className="flex-row items-center justify-between gap-3 mb-3">
+          <Text className="font-lato-bold text-base text-neutral-900">
+            Contact
+          </Text>
+
+          {/* Only offered when there is a number to message — a lead captured
+              without a phone has nothing for WhatsApp to open. */}
+          {phoneNumber ? (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={openWhatsApp}
+              className="flex-row items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#25D366]"
+              accessibilityRole="button"
+              accessibilityLabel={`Open a WhatsApp chat with ${title}`}>
+              <MessageCircle size={15} color="#FFFFFF" />
+              <Text className="font-lato-bold text-sm text-white">
+                WhatsApp
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         {/* A capture form can leave either channel blank, so each row only
             renders once it has something to show. */}
@@ -422,15 +706,13 @@ export function LeadDetailScreen() {
           </Text>
         </View>
 
-        {/* <View className="flex-row items-center gap-2"> */}
-        {/*   <TrendingUp size={15} color="#5279AC" /> */}
-        {/*   <Text className="font-lato text-sm text-neutral-900"> */}
-        {/*     Status: {detail?.pipeline || '—'} */}
-        {/*   </Text> */}
-        {/* </View> */}
+        {whatsappError ? (
+          <Text className="text-red-500 text-xs font-lato mt-2">
+            {whatsappError}
+          </Text>
+        ) : null}
       </Card>
 
-      {/* ---------- Investor message ---------- */}
       {detail?.message ? (
         <Card className="bg-white rounded-2xl p-4 mt-4">
           <Text className="font-lato-bold text-base text-neutral-900 mb-2">
@@ -442,39 +724,6 @@ export function LeadDetailScreen() {
         </Card>
       ) : null}
 
-
-      {/* ---------- Company ---------- */}
-      {detail?.company ? (
-        <Card className="bg-white rounded-2xl p-4 mt-4">
-          <View className="flex-row items-center gap-2 mb-3">
-            <Building2 size={16} color="#5279AC" />
-            <Text className="font-lato-bold text-base text-neutral-900">
-              {detail.company.name}
-            </Text>
-          </View>
-
-          {detail.company.address ? (
-            <Text className="font-lato text-sm text-neutral-700 leading-5 mb-1">
-              {detail.company.address}
-            </Text>
-          ) : null}
-          {detail.company.contact ? (
-            <Text className="font-lato text-sm text-neutral-700 mb-1">
-              {detail.company.contact}
-            </Text>
-          ) : null}
-          {detail.company.website ? (
-            <View className="flex-row items-center gap-2">
-              <Mail size={15} color="#8990A8" />
-              <Text className="font-lato text-sm text-neutral-700" numberOfLines={1}>
-                {detail.company.website}
-              </Text>
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* ---------- Assigned employee ---------- */}
       {detail?.vcard ? (
         <Card className="bg-white rounded-2xl p-4 mt-4">
           <Text className="font-lato-bold text-base text-neutral-900 mb-2">
@@ -496,7 +745,6 @@ export function LeadDetailScreen() {
         </Card>
       ) : null}
 
-      {/* ---------- Images ---------- */}
       <Card className="bg-white rounded-2xl p-4 mt-4">
         <View className="flex-row items-center justify-between gap-3 mb-3">
           <Text className="font-lato-bold text-base text-neutral-900">
@@ -539,20 +787,70 @@ export function LeadDetailScreen() {
         )}
       </Card>
 
-      {/* ---------- Follow-up history ---------- */}
+      {/* ---------- Meetings ---------- */}
       <Card className="bg-white rounded-2xl p-4 mt-4">
         <View className="flex-row items-center justify-between gap-3 mb-3">
           <Text className="font-lato-bold text-base text-neutral-900">
-            Follow-ups
+            Meetings
           </Text>
           <Button
-            title="Schedule"
+            title="Schedule meeting"
             size="sm"
-            variant="secondary"
             icon={<CalendarPlus size={14} color="#FFFFFF" />}
-            onPress={() => setScheduling(true)}
+            onPress={() => setMeetingOpen(true)}
           />
         </View>
+
+        {leadMeetings.length === 0 ? (
+          <Text className="font-lato text-xs text-neutral-600 leading-5">
+            No meetings logged against this lead yet.
+          </Text>
+        ) : (
+          leadMeetings.map((meeting, index) => {
+            const kind = meetingKind(meeting);
+
+            return (
+              <View
+                key={meeting.id || index}
+                className="py-3"
+                style={
+                  index > 0
+                    ? { borderTopWidth: 1, borderTopColor: '#EEF0FF' }
+                    : undefined
+                }>
+                <View className="flex-row items-center justify-between gap-3">
+                  <Text className="font-lato-bold text-sm text-neutral-900">
+                    {[meeting.date, meeting.time].filter(Boolean).join(' · ') ||
+                      'No date'}
+                  </Text>
+                  {kind ? (
+                    <View className="rounded-full bg-primary-200 px-3 py-1">
+                      <Text className="font-lato-bold text-[11px] text-primary-700">
+                        {kind}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {meeting.description ? (
+                  <Text className="font-lato text-sm text-neutral-700 leading-5 mt-1.5">
+                    {meeting.description}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </Card>
+
+      {/* ---------- Follow-up history ---------- */}
+      <Card className="bg-white rounded-2xl p-4 mt-4">
+        {/* No "Schedule" button: moving the lead into the follow-up stage is
+            what schedules one, so the form opens from the Stage card instead
+            of from here. */}
+        <Text className="font-lato-bold text-base text-neutral-900 mb-3">
+          Follow-ups
+        </Text>
 
         {followups.length === 0 ? (
           <Text className="font-lato text-xs text-neutral-600 leading-5">
@@ -644,11 +942,24 @@ export function LeadDetailScreen() {
         />
       </Card>
 
+      <MeetingSheet
+        visible={meetingOpen}
+        leadId={leadId}
+        lead={detail}
+        companyId={e_co_id}
+        onClose={() => setMeetingOpen(false)}
+        onCreated={onMeetingCreated}
+      />
+
       <FollowUpSheet
         visible={scheduling}
         initialLeadId={leadId}
+        leadLabel={title}
         onClose={() => setScheduling(false)}
-        onScheduled={load}
+        // Backing out of the form abandons the follow-up, so the stage change
+        // that opened it has to be undone.
+        onDismissed={() => void revertFollowUpStage()}
+        onScheduled={onFollowUpScheduled}
       />
 
       <LeadImageSheet

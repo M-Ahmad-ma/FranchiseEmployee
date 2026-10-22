@@ -12,7 +12,15 @@ import { USE_MOCK } from '../config';
  * bodies, which include session state and employee contact details.
  */
 
-/** Set to true to print every request and response. */
+/**
+ * Set to true to print every request and response.
+ *
+ * Off by default: these lines print response bodies, which include employee
+ * names and phone numbers. Switch it on when a response needs reading off the
+ * wire — the status, the URL and the body all land in the Metro console —
+ * and switch it back off afterwards. `enabled()` also checks `__DEV__`, so a
+ * release build never prints this either way.
+ */
 export const LOG_API = false;
 
 /** Print payload bodies. Turn off to log only method, URL, status and timing. */

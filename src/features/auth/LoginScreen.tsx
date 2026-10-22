@@ -229,10 +229,6 @@ export function LoginScreen() {
                 onPress={submit}
               />
 
-              <Text className="font-lato text-[11px] text-neutral-600 text-center leading-4 mt-4">
-                Demo build — any valid email and a {MIN_PASSWORD_LENGTH}+
-                character password will sign you in.
-              </Text>
             </Card>
           </View>
 
