@@ -378,6 +378,7 @@ export function RequestsScreen() {
           <Button
             title="Apply Filters"
             size="lg"
+            variant='secondary'
             className="flex-1"
             loading={actionLoading}
             icon={<Filter size={16} color="#FFFFFF" />}
@@ -389,7 +390,7 @@ export function RequestsScreen() {
           <Button
             title="Reset"
             size="lg"
-            variant="secondary"
+            variant="primary"
             className="flex-1"
             disabled={actionLoading}
             icon={<RefreshCw size={16} color="#FFFFFF" />}
@@ -436,9 +437,8 @@ export function RequestsScreen() {
           modalTitle="Records per page"
         />
         <Badge
-          label={`Filtered Requests: ${
-            loading && rows.length === 0 ? '—' : meta.total
-          }`}
+          label={`Filtered Requests: ${loading && rows.length === 0 ? '—' : meta.total
+            }`}
           tone="primary"
         />
       </View>

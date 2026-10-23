@@ -227,6 +227,8 @@ export function withPipelineNames<T extends LeadFilterRow>(
 ): T[] {
   const byId = new Map(statuses.map(status => [status.id, status.name]));
 
+  console.log(rows, "rows")
+
   return rows.map(row => ({
     ...row,
     pipelineLabel: byId.get(row.pipeline) ?? row.pipelineLabel,

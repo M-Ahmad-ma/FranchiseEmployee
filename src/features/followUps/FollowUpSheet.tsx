@@ -215,9 +215,9 @@ export function FollowUpSheet({
         submitError instanceof ApiError && submitError.status === 400
           ? 'Check the date, time and comment, then try again.'
           : describeApiError(
-              submitError,
-              'Could not schedule the follow-up. Please try again.',
-            ),
+            submitError,
+            'Could not schedule the follow-up. Please try again.',
+          ),
       );
     } finally {
       setSaving(false);
@@ -345,7 +345,7 @@ export function FollowUpSheet({
               <Button
                 title="Cancel"
                 size="lg"
-                variant="secondary"
+                variant="primary"
                 className="flex-1"
                 disabled={saving}
                 onPress={dismiss}
@@ -353,6 +353,7 @@ export function FollowUpSheet({
               <Button
                 title="Schedule"
                 size="lg"
+                variant='secondary'
                 className="flex-1"
                 loading={saving}
                 icon={<CalendarPlus size={16} color="#FFFFFF" />}

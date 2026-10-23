@@ -583,37 +583,6 @@ export function LeadDetailScreen() {
           }
         />
 
-        <Text className="text-neutral-700 font-lato-bold text-xs mb-1.5 ml-1">
-          Deal done
-        </Text>
-        <View className="flex-row gap-3">
-          {DEALS_DONE_OPTIONS.map(option => {
-            const selected = detail?.dealDone === option.value;
-            return (
-              <TouchableOpacity
-                key={option.value}
-                activeOpacity={0.8}
-                disabled={stageForbidden || stageSaving !== null}
-                onPress={() => void onStageChange('deal_done', option.value)}
-                accessibilityRole="button"
-                accessibilityState={{
-                  selected,
-                  disabled: stageForbidden || stageSaving !== null,
-                }}
-                className={`flex-1 items-center rounded-2xl px-4 py-3 border ${selected
-                  ? 'border-primary-700 bg-primary-200'
-                  : 'border-neutral-200 bg-white'
-                  }`}>
-                <Text
-                  className={`font-lato-bold text-sm ${selected ? 'text-primary-700' : 'text-neutral-700'
-                    }`}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {stageError ? (
           <Text className="text-red-500 font-lato text-xs mt-2">
             {stageError}
@@ -683,20 +652,19 @@ export function LeadDetailScreen() {
           </View>
         ) : null}
 
-        <View className="flex-row items-center gap-2 mb-2">
-          <CheckCircle2 size={15} color="#5279AC" />
-          <Text className="font-lato text-sm text-neutral-900">
-            Deal done: {dealDoneLabel(detail?.dealDone ?? '') || '—'}
-          </Text>
-        </View>
+        {detail?.message ? (
+          <View className='flex flex-row mb-3 gap-2'>
+            <MessageSquare size={15} className='text-primary-700' />
+            <Text className="font-lato text-sm text-neutral-700 leading-5">
+              {detail.message}
+            </Text>
+          </View>
+        ) : null}
 
         <View className="flex-row items-center gap-2 mb-2">
           <MessageSquare size={15} color="#5279AC" />
           <Text className="font-lato text-sm text-neutral-900 flex-1">
-            {/* `meeting_status` answers "is there a meeting" directly. The type
-                shown is the meeting's own, so this agrees with the badge on the
-                leads table; the lead's stored meeting_type is the fallback when
-                no meeting record is available. */}
+
             Meeting:{' '}
             {hasMeeting
               ? meetingKind(leadMeeting) ||
@@ -712,17 +680,6 @@ export function LeadDetailScreen() {
           </Text>
         ) : null}
       </Card>
-
-      {detail?.message ? (
-        <Card className="bg-white rounded-2xl p-4 mt-4">
-          <Text className="font-lato-bold text-base text-neutral-900 mb-2">
-            Investor message
-          </Text>
-          <Text className="font-lato text-sm text-neutral-700 leading-5">
-            {detail.message}
-          </Text>
-        </Card>
-      ) : null}
 
       {detail?.vcard ? (
         <Card className="bg-white rounded-2xl p-4 mt-4">

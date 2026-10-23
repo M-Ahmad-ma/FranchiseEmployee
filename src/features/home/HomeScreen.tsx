@@ -127,28 +127,25 @@ const SHORTCUTS: Shortcut[] = [
     screen: 'Requests',
     title: 'Lead Requests',
     subtitle: 'Filter leads by criteria',
-    icon: <Filter size={18} color="#5279AC" />,
+    icon: <Filter size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
   },
   {
     screen: 'FollowUps',
     title: 'Lead Follow-ups',
     subtitle: 'Leads to chase',
-    icon: <PhoneCall size={18} color="#5279AC" />,
+    icon: <PhoneCall size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
   },
   {
     screen: 'CompanyMedia',
     title: 'Company Media',
     subtitle: 'Images, videos & PDFs',
-    icon: <Images size={18} color="#5279AC" />,
+    icon: <Images size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
   },
 ];
 
-/* -------------------------------------------------------------------------- */
-/*  Screen                                                                     */
-/* -------------------------------------------------------------------------- */
 
 export function HomeScreen() {
   const navigation =
@@ -295,10 +292,10 @@ export function HomeScreen() {
           </View>
         </View>
       </Card>
-
-      <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1">
-        At a glance
-      </Text>
+      {/**/}
+      {/* <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1"> */}
+      {/*   At a glance */}
+      {/* </Text> */}
 
       <Card className="bg-white rounded-2xl flex-row py-4 mb-6">
         {metrics.map((metric, index) => (
@@ -329,22 +326,25 @@ export function HomeScreen() {
             key={shortcut.screen}
             activeOpacity={0.8}
             onPress={() => navigation.navigate(shortcut.screen)}
-            className="w-[48%] bg-white rounded-2xl p-3 mb-3 min-h-[132px]"
+            className="w-[48%] bg-white rounded-2xl relative p-3 mb-3 min-h-[132px]"
             style={cardShadow}
             accessibilityRole="button"
             accessibilityLabel={`${shortcut.title}. ${shortcut.subtitle}`}>
             <View
-              className={`w-9 h-9 rounded-xl ${shortcut.disc} items-center justify-center mb-3`}>
+              className={`w-12 h-12 rounded-xl ${shortcut.disc} items-center justify-center mb-3`}>
               {shortcut.icon}
             </View>
-            <Text className="font-lato-bold text-[13px] text-neutral-900 leading-4">
-              {shortcut.title}
-            </Text>
-            <Text className="font-lato text-[11px] text-neutral-600 leading-4 mt-1">
-              {shortcut.subtitle}
-            </Text>
-            <View className="flex-1" />
-            <View className="self-end">
+
+            <View className='absolute bottom-5 left-4'>
+              <Text className="font-lato-bold text-[15px]  text-neutral-900 leading-4">
+                {shortcut.title}
+              </Text>
+              <Text className="font-lato text-[11px] text-neutral-600 leading-4 mt-1">
+                {shortcut.subtitle}
+              </Text>
+              <View className="flex-1" />
+            </View>
+            <View className="absolute bottom-5 right-4">
               <ChevronRight size={14} color="#A3ABC4" />
             </View>
           </TouchableOpacity>
