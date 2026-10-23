@@ -5,35 +5,26 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { CalendarClock, CheckCircle2 } from 'lucide-react-native';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { AlertBanner } from '../../shared/components/AlertBanner';
+import { Badge } from '../../shared/components/Badge';
 import { Button } from '../../shared/components/Button';
-import { Card } from '../../shared/components/Card';
-import { DataTable, type TableColumn } from '../../shared/components/DataTable';
 import { TabGroup, type TabItem } from '../../shared/components/TabGroup';
+import { FollowUpCard } from './FollowUpCard';
 import { FollowUpSheet } from './FollowUpSheet';
 import {
   fetchFollowups,
-  followUpState,
   markFollowUpDone,
   type FollowUp,
 } from '../../services/followupsService';
+import { fetchCompanyOptionsCached } from '../../services/leadsFilterService';
 import { ApiError } from '../../services/httpClient';
 import type { RootStackParamList } from '../../navigation/types';
 
 const STATUS_TABS: TabItem[] = [
   { key: 'active', label: 'Active' },
-  { key: 'all', label: 'All' },
+  { key: 'upcoming', label: 'Upcoming' },
+  { key: 'done', label: 'Done' },
+  { key: 'all', label: 'All' }
 ];
-
-const statusPill = (row: FollowUp) => {
-  const state = followUpState(row);
-  if (state === 'done') {
-    return { tone: 'bg-[#BEFFDB] text-[#00A572]', label: 'Done' };
-  }
-  if (state === 'overdue') {
-    return { tone: 'bg-secondary-200 text-secondary-700', label: 'Overdue' };
-  }
-  return { tone: 'bg-primary-200 text-primary-700', label: 'Active' };
-};
 
 export function FollowUpsScreen() {
   const navigation =
@@ -48,9 +39,18 @@ export function FollowUpsScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   /**
+   * Company id to name, for the card's company line.
+   *
+   * Follow-up rows carry `e_co_id` on the live API, and an id on a card says
+   * nothing. The same cached dropdowns the filter screen loads answer the
+   * lookup, so this costs no extra request once they have been fetched.
+   */
+  const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
+
+  /**
    * The pull gesture only. `loading` also covers the focus fetch and the tab
    * switch, and feeding that to the RefreshControl made its spinner animate on
-   * top of the table's own spinner for a single request.
+   * top of the list's own spinner for a single request.
    */
   const [pullRefreshing, setPullRefreshing] = useState(false);
 
@@ -66,10 +66,29 @@ export function FollowUpsScreen() {
     }
   }, [status]);
 
+  /**
+   * Best-effort: the company line is context, not the point of the card, so a
+   * failure simply leaves it out rather than adding another banner to the
+   * screen.
+   */
+  const loadCompanyNames = useCallback(async () => {
+    try {
+      const options = await fetchCompanyOptionsCached();
+      const next: Record<string, string> = {};
+      for (const option of options) {
+        next[option.value] = option.label;
+      }
+      setCompanyNames(next);
+    } catch {
+      // Silent by design — see above.
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      void loadCompanyNames();
+    }, [load, loadCompanyNames]),
   );
 
   /** The pull gesture only — the focus fetch and tab switches stay silent. */
@@ -102,47 +121,33 @@ export function FollowUpsScreen() {
     }
   }, []);
 
-  const columns: TableColumn<FollowUp>[] = [
-    { key: 'investor', title: 'Lead', width: 150 },
-    { key: 'phone', title: 'Phone', width: 125 },
-    { key: 'company', title: 'Company', width: 115 },
-    { key: 'date', title: 'Date', width: 105 },
-    { key: 'time', title: 'Time', width: 75 },
-    { key: 'comment', title: 'Comment', width: 170 },
-    {
-      key: 'status',
-      title: 'Status',
-      width: 105,
-      render: row => {
-        const pill = statusPill(row);
-        return (
-          <View className={`rounded-full px-3 py-1 self-start ${pill.tone}`}>
-            <Text className="font-lato-bold text-[11px]">{pill.label}</Text>
-          </View>
-        );
-      },
-    },
-    {
-      key: 'action',
-      title: 'Action',
-      width: 115,
-      align: 'right',
-      render: row =>
-        row.status.toLowerCase() === 'done' ? (
-          <Text className="font-lato text-xs text-neutral-500">Closed</Text>
-        ) : (
-          <Button
-            title="Mark done"
-            size="sm"
-            variant="outlined"
-            loading={pendingId === row.id}
-            disabled={pendingId !== null}
-            icon={<CheckCircle2 size={14} color="#5279AC" />}
-            onPress={() => onDone(row.id)}
-          />
-        ),
-    },
-  ];
+  /**
+   * A row's company as readable text.
+   *
+   * A value that is already a name passes through; one that matches a known
+   * company id becomes that company's name. An unresolved numeric id is
+   * dropped rather than shown, because "42" under a building icon is worse
+   * than no line at all.
+   */
+  const companyLabel = (value: string): string | undefined => {
+    const raw = value.trim();
+    if (!raw || raw === '—' || raw === '-') {
+      return undefined;
+    }
+    const resolved = companyNames[raw];
+    if (resolved) {
+      return resolved;
+    }
+    return /^\d+$/.test(raw) ? undefined : raw;
+  };
+
+  const openLead = (followUp: FollowUp) =>
+    navigation.navigate('LeadDetail', {
+      leadId: followUp.leadId,
+      investor: followUp.investor,
+      phone: followUp.phone,
+      company: followUp.company,
+    });
 
   return (
     <DashboardLayout
@@ -153,7 +158,12 @@ export function FollowUpsScreen() {
       refreshing={pullRefreshing}>
       <TabGroup tabs={STATUS_TABS} value={status} onChange={setStatus} />
 
-      <View className="flex-row justify-end mb-4">
+      <View className="flex-row items-center justify-between gap-3 mb-3">
+        <Badge
+          label={`Follow-ups: ${loading && rows.length === 0 ? '—' : rows.length
+            }`}
+          tone="primary"
+        />
         <Button
           title="Schedule follow-up"
           size="sm"
@@ -174,46 +184,53 @@ export function FollowUpsScreen() {
         </Text>
       )}
 
-      <Card className="bg-white rounded-2xl overflow-hidden">
-        {/* Only the first load blanks the table. Switching tabs or refocusing
-            keeps the rows on screen, dimmed, rather than flashing a spinner —
-            a spinner there reads as "no follow-ups". */}
-        {rows.length === 0 ? (
-          loading ? (
-            <View className="items-center py-8">
-              <ActivityIndicator size="large" color="#5279AC" />
-            </View>
-          ) : (
-            <View className="px-4 py-6">
-              <AlertBanner
-                message={
-                  status === 'active'
-                    ? 'No follow-ups are outstanding.'
-                    : 'No follow-ups have been scheduled yet.'
-                }
-              />
-            </View>
-          )
+      {/* Cards are not wrapped in a card of their own: each follow-up is a
+          card, and nesting them would double the shadow and the padding. */}
+      {rows.length === 0 ? (
+        // Only the first load blanks the list. Switching tabs or refocusing
+        // keeps the cards on screen, dimmed, rather than flashing a spinner —
+        // a spinner there reads as "no follow-ups".
+        loading ? (
+          <View className="items-center py-8">
+            <ActivityIndicator size="large" color="#5279AC" />
+          </View>
         ) : (
-          <View
-            style={{ opacity: loading ? 0.55 : 1 }}
-            accessibilityState={{ busy: loading }}>
-            <DataTable
-              columns={columns}
-              data={rows}
-              emptyMessage="No follow-ups."
-              onPressRow={row =>
-                navigation.navigate('LeadDetail', {
-                  leadId: row.leadId,
-                  investor: row.investor,
-                  phone: row.phone,
-                  company: row.company,
-                })
+          <AlertBanner
+            message={
+              status === 'active'
+                ? 'No follow-ups are outstanding.'
+                : 'No follow-ups have been scheduled yet.'
+            }
+          />
+        )
+      ) : (
+        <View
+          style={{ opacity: loading ? 0.55 : 1 }}
+          accessibilityState={{ busy: loading }}>
+          {rows.map(row => (
+            <FollowUpCard
+              key={row.id}
+              followUp={row}
+              onPress={openLead}
+              showComment
+              companyLabel={companyLabel(row.company)}
+              action={
+                row.status.toLowerCase() === 'done' ? undefined : (
+                  <Button
+                    title="Mark done"
+                    size="sm"
+                    variant="outlined"
+                    loading={pendingId === row.id}
+                    disabled={pendingId !== null}
+                    icon={<CheckCircle2 size={14} color="#5279AC" />}
+                    onPress={() => onDone(row.id)}
+                  />
+                )
               }
             />
-          </View>
-        )}
-      </Card>
+          ))}
+        </View>
+      )}
 
       <FollowUpSheet
         visible={scheduling}

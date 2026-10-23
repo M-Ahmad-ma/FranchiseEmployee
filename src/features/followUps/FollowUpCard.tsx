@@ -1,9 +1,9 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import {
+  Building2,
   CalendarDays,
   ChevronRight,
-  MapPin,
   MessageSquare,
   Phone,
   PhoneCall,
@@ -76,7 +76,7 @@ const formatWhen = (followUp: FollowUp) =>
 
 const pillTone: Record<FollowUpState, string> = {
   done: 'bg-[#BEFFDB] text-[#00A572]',
-  overdue: 'bg-secondary-200 text-secondary-700',
+  overdue: 'bg-primary-200 text-primary-700',
   active: 'bg-primary-200 text-primary-700',
 };
 
@@ -89,7 +89,7 @@ const pillLabel: Record<FollowUpState, string> = {
 /** The leading disc carries the same urgency as the pill, one shade deeper. */
 const discTone: Record<FollowUpState, { disc: string; icon: string }> = {
   done: { disc: 'bg-neutral-200', icon: '#6F778E' },
-  overdue: { disc: 'bg-secondary-200', icon: '#BC5D00' },
+  overdue: { disc: 'bg-primary-200', icon: '#0081A7' },
   active: { disc: 'bg-tertiary-200', icon: '#0081A7' },
 };
 
@@ -98,9 +98,31 @@ interface Props {
   onPress: (followUp: FollowUp) => void;
   /** Shows the follow-up comment under the contact lines. */
   showComment?: boolean;
+  /**
+   * The company, already resolved to a readable name by the caller.
+   *
+   * `FollowUp.company` carries an id on the live API but a name in some
+   * responses, so the card does not try to interpret it — the screen that has
+   * the company list does that and passes the label down.
+   */
+  companyLabel?: string;
+  /**
+   * A control for the card's footer, e.g. "Mark done".
+   *
+   * Sits in its own row behind a hairline so it reads as an action on the
+   * card rather than part of the summary. The nested button wins the touch,
+   * so pressing it does not also open the lead.
+   */
+  action?: React.ReactNode;
 }
 
-export function FollowUpCard({ followUp, onPress, showComment = false }: Props) {
+export function FollowUpCard({
+  followUp,
+  onPress,
+  showComment = false,
+  companyLabel,
+  action,
+}: Props) {
   const state = followUpState(followUp);
 
   const investor = followUp.investor.trim() || 'Unnamed lead';
@@ -160,7 +182,17 @@ export function FollowUpCard({ followUp, onPress, showComment = false }: Props) 
         </View>
       ) : null}
 
-
+      {/* ---------- Company ---------- */}
+      {companyLabel ? (
+        <View className="flex-row items-center gap-1.5 mt-2">
+          <Building2 size={13} color="#8990A8" />
+          <Text
+            className="font-lato text-sm text-neutral-700 flex-1"
+            numberOfLines={1}>
+            {companyLabel}
+          </Text>
+        </View>
+      ) : null}
 
       {/* ---------- Comment ---------- */}
       {showComment && followUp.comment ? (
@@ -171,6 +203,13 @@ export function FollowUpCard({ followUp, onPress, showComment = false }: Props) 
             numberOfLines={2}>
             {followUp.comment}
           </Text>
+        </View>
+      ) : null}
+
+      {/* ---------- Action ---------- */}
+      {action ? (
+        <View className="flex-row justify-end mt-3 pt-3 border-t border-neutral-200">
+          {action}
         </View>
       ) : null}
     </TouchableOpacity>
