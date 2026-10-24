@@ -27,21 +27,71 @@ export function whatsappNumber(phone: string): string {
   return trimmed.startsWith('0') ? `92${trimmed.slice(1)}` : trimmed;
 }
 
+interface Comment {
+  message: string;
+  date: string;
+}
+
+
+// whatsapp interface
+export interface Message {
+  name: string;
+  callNow: string;
+  brand: string;
+  city: string;
+  comments?: Comment[];
+  email: string;
+  date: string;
+}
+
 /**
- * A `wa.me` link for the number, with an optional prefilled message.
+ * Renders a lead as the plain-text block that is sent to WhatsApp.
  *
- * The https form is used rather than `whatsapp://send?phone=…`: it opens
- * WhatsApp directly when the app is installed and falls back to the Play
- * Store when it is not, so the link never dead-ends. An empty result means
- * the number had no digits to work with.
+ * Field labels are left-aligned and separated from their values by a tab,
+ * which is what the ops team asked for. WhatsApp renders tabs as a small gap
+ * rather than aligning columns — see the note below — but the layout is still
+ * readable and it is what the spreadsheet they copy from looks like.
  */
-export function whatsappUrl(phone: string, message?: string): string {
-  const number = whatsappNumber(phone);
-  if (!number) {
-    return '';
+export function formatLeadForWhatsApp(lead: Message): string {
+  const lines: string[] = [
+    `Name :\t${lead.name || '-'}`,
+    `Call Now:\t${lead.callNow || '-'}`,
+    `Brand :\t${lead.brand || '-'}`,
+    `City :\t${lead.city || '-'}`,
+    `View Comment :`,
+    '',
+  ];
+
+  if (lead.comments?.length) {
+    // Newest first, matching the app's own comment thread.
+    for (const comment of lead.comments) {
+      lines.push(comment.message);
+      lines.push(comment.date);
+    }
+  } else {
+    lines.push('No comments');
   }
 
-  const base = `https://wa.me/${number}`;
-  const text = (message ?? '').trim();
-  return text ? `${base}?text=${encodeURIComponent(text)}` : base;
+  lines.push('');
+  lines.push(`Send email :\t${lead.email || '-'}`);
+  lines.push(`Date :\t${lead.date || '-'}`);
+
+  return lines.join('\n');
+}
+
+
+/**
+ * A `wa.me` link that opens WhatsApp's contact picker with the lead prefilled.
+ *
+ * The phone is deliberately absent from the path — `https://wa.me/?text=…`
+ * is WhatsApp's share form, which asks the sender to pick a recipient. The
+ * https form is used rather than `whatsapp://send` so it opens the app when
+ * installed and falls back to the Play Store when it is not.
+ *
+ * Always returns a non-empty string: there is no "no phone number" case
+ * here, because the number is never part of the URL.
+ */
+export function whatsappShareUrl(lead: Message): string {
+  const text = formatLeadForWhatsApp(lead);
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }

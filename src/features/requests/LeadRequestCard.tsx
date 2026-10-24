@@ -107,6 +107,8 @@ export function LeadRequestCard({ row, onPress }: Props) {
   const investor = row.investor.trim() || 'Unknown investor';
   const location = [row.brand, row.city].filter(Boolean).join(' · ');
 
+
+
   return (
     <TouchableOpacity
       activeOpacity={0.9}
@@ -157,9 +159,11 @@ export function LeadRequestCard({ row, onPress }: Props) {
         ) : null}
 
         {row.pipelineLabel ? (
-          <View className="rounded-full bg-primary-200 px-3 py-1 max-w-[45%]">
+          <View className={`rounded-full  px-3 py-1 max-w-[45%]`}
+            style={{ backgroundColor: row.pipelineColor || '', borderRadius: "0%" }}
+          >
             <Text
-              className="font-lato-bold text-[11px] text-primary-700"
+              className="font-lato-bold text-[11px] text-white"
               numberOfLines={1}>
               {row.pipelineLabel}
             </Text>

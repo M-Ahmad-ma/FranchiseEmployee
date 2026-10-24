@@ -160,7 +160,7 @@ export function RequestsScreen() {
             meetings,
           ),
         );
-      } catch {
+      } catch (e) {
         setError('Something went wrong. Please try again.');
       } finally {
         setLoading(false);

@@ -13,25 +13,20 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import {
-  ArrowLeft,
-  Building2,
   CalendarPlus,
   Camera,
-  CheckCircle2,
+  Handshake,
   Mail,
   MapPin,
   MessageCircle,
   MessageSquare,
   Phone,
-  Rows,
-  TrendingUp,
 } from 'lucide-react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { AlertBanner } from '../../shared/components/AlertBanner';
 import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
-import { TextField } from '../../shared/components/TextField';
 import { FollowUpSheet } from '../followUps/FollowUpSheet';
 import { MeetingSheet } from '../meetings/MeetingSheet';
 import { LEAD_INFO_OPTIONS } from '../../services/options';
@@ -58,16 +53,13 @@ import {
   pickPrimaryMeeting,
   type PipelineStatus,
 } from '../../services/leadsFilterService';
-import { DEALS_DONE_OPTIONS } from '../../services/options';
 import { formatBytes, validateFile, type PickedFile } from '../../services/mediaService';
-import { dealDoneLabel, meetingTypeLabel } from '../../services/leadsFilterService';
-import { whatsappUrl } from '../../services/whatsapp';
+import { meetingTypeLabel } from '../../services/leadsFilterService';
+import { Message, whatsappShareUrl } from '../../services/whatsapp';
 import { ApiError, describeApiError } from '../../services/httpClient';
 import { useAuth } from '../../navigation/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
 
-const circleButton =
-  'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
 
 /**
  * Label for a meeting's `meeting_type`.
@@ -507,14 +499,7 @@ export function LeadDetailScreen() {
   // link, which both read it as "may be missing" rather than "is a string".
   const phoneNumber = detail?.phone || phone || '';
 
-  /**
-   * The opening line of the WhatsApp chat. The employee's name is on the
-   * signed-in profile, so the lead opens the chat already knowing who is
-   * writing — it is still editable in WhatsApp.
-   */
-  const whatsappGreeting = user?.name
-    ? `Hello, this is ${user.name} from the franchise team.`
-    : 'Hello, this is the franchise team.';
+
 
   /**
    * Hands the lead over to WhatsApp with the number already dialled in.
@@ -524,21 +509,25 @@ export function LeadDetailScreen() {
    * A rejected `openURL` means the device has nothing that can handle it.
    */
   const openWhatsApp = () => {
-    const url = whatsappUrl(phoneNumber, whatsappGreeting);
-
-    if (!url) {
-      setWhatsappError('This lead has no phone number to message.');
-      return;
-    }
+    const message: Message = {
+      name: title,
+      callNow: phoneNumber || '-',
+      brand: company || detail?.companyName || '-',
+      city: detail?.city ?? '-',
+      email: detail?.email ?? '-',
+      date: detail?.date ?? '-',
+      comments: detail?.comments?.map(c => ({
+        message: c.comment,
+        date: c.created,
+      })),
+    };
 
     setWhatsappError(null);
-    Linking.openURL(url).catch(() => {
+    Linking.openURL(whatsappShareUrl(message)).catch(() => {
       setWhatsappError('Could not open WhatsApp on this device.');
     });
   };
 
-
-  console.log(detail, "details")
 
   return (
     <DashboardLayout
@@ -590,6 +579,45 @@ export function LeadDetailScreen() {
         ) : null}
       </Card>
 
+
+      <Card className="bg-white rounded-2xl p-4  mb-3">
+        <Text className="font-lato-bold text-base text-neutral-900 mb-2">
+          Comments
+        </Text>
+
+        {detail?.comments.length ? (
+          detail.comments.map((comment, index) => (
+            <View
+              key={comment.id || index}
+              className="py-3"
+              style={
+                index > 0
+                  ? { borderTopWidth: 1, borderTopColor: '#EEF0FF' }
+                  : undefined
+              }>
+              <Text className="font-lato text-lg text-neutral-900 leading-5">
+                {comment.comment}
+              </Text>
+              <Text className="font-lato text-[11px] text-neutral-900 mt-1">
+                {[comment.employee, comment.created].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text className="font-lato text-sm text-neutral-600 py-3">
+            No comments on this lead yet.
+          </Text>
+        )}
+
+        <CommentComposer
+          leadId={leadId}
+          onPosted={load}
+          onForbidden={() => setCommentForbidden(true)}
+          forbidden={commentForbidden}
+        />
+      </Card>
+
+
       {/* ---------- Contact ---------- */}
       <Card className="bg-white rounded-2xl p-4">
         <View className="flex-row items-center justify-between gap-3 mb-3">
@@ -597,21 +625,7 @@ export function LeadDetailScreen() {
             Contact
           </Text>
 
-          {/* Only offered when there is a number to message — a lead captured
-              without a phone has nothing for WhatsApp to open. */}
-          {phoneNumber ? (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={openWhatsApp}
-              className="flex-row items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#25D366]"
-              accessibilityRole="button"
-              accessibilityLabel={`Open a WhatsApp chat with ${title}`}>
-              <MessageCircle size={15} color="#FFFFFF" />
-              <Text className="font-lato-bold text-sm text-white">
-                WhatsApp
-              </Text>
-            </TouchableOpacity>
-          ) : null}
+
         </View>
 
         {/* A capture form can leave either channel blank, so each row only
@@ -654,15 +668,15 @@ export function LeadDetailScreen() {
 
         {detail?.message ? (
           <View className='flex flex-row mb-3 gap-2'>
-            <MessageSquare size={15} className='text-primary-700' />
-            <Text className="font-lato text-sm text-neutral-700 leading-5">
+            <MessageSquare size={15} color='#5279AC' />
+            <Text className="font-lato text-sm text-neutral-900 leading-5">
               {detail.message}
             </Text>
           </View>
         ) : null}
 
         <View className="flex-row items-center gap-2 mb-2">
-          <MessageSquare size={15} color="#5279AC" />
+          <Handshake size={15} color="#5279AC" />
           <Text className="font-lato text-sm text-neutral-900 flex-1">
 
             Meeting:{' '}
@@ -681,38 +695,40 @@ export function LeadDetailScreen() {
         ) : null}
       </Card>
 
-      {detail?.vcard ? (
-        <Card className="bg-white rounded-2xl p-4 mt-4">
-          <Text className="font-lato-bold text-base text-neutral-900 mb-2">
-            Assigned to
-          </Text>
-          <Text className="font-lato text-sm text-neutral-900">
-            {detail.vcard.name}
-          </Text>
-          {detail.vcard.contact ? (
-            <Text className="font-lato text-xs text-neutral-700 mt-0.5">
-              {detail.vcard.contact}
-            </Text>
-          ) : null}
-          {detail.vcard.email ? (
-            <Text className="font-lato text-xs text-neutral-700 mt-0.5">
-              {detail.vcard.email}
-            </Text>
-          ) : null}
-        </Card>
-      ) : null}
+
+      <Card className='mt-2 p-3 bg-white flex flex-row items-center gap-3'>
+        {phoneNumber ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={openWhatsApp}
+            className="flex-row items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#25D366]"
+            accessibilityRole="button"
+            accessibilityLabel={`Open a WhatsApp chat with ${title}`}>
+            <MessageCircle size={19} color="#FFFFFF" />
+
+          </TouchableOpacity>
+        ) : null}
+
+
+        <Button
+          variant='secondary'
+          icon={<Camera size={19} color="#FFFFFF" />}
+          onPress={() => setUploadOpen(true)}
+        />
+
+        <Button
+          icon={<CalendarPlus size={19} color="#FFFFFF" />}
+          onPress={() => setMeetingOpen(true)}
+        />
+      </Card>
+
 
       <Card className="bg-white rounded-2xl p-4 mt-4">
         <View className="flex-row items-center justify-between gap-3 mb-3">
           <Text className="font-lato-bold text-base text-neutral-900">
             Lead info
           </Text>
-          <Button
-            title="Add image"
-            size="sm"
-            icon={<Camera size={14} color="#FFFFFF" />}
-            onPress={() => setUploadOpen(true)}
-          />
+
         </View>
 
         {detail?.images.length ? (
@@ -750,12 +766,7 @@ export function LeadDetailScreen() {
           <Text className="font-lato-bold text-base text-neutral-900">
             Meetings
           </Text>
-          <Button
-            title="Schedule meeting"
-            size="sm"
-            icon={<CalendarPlus size={14} color="#FFFFFF" />}
-            onPress={() => setMeetingOpen(true)}
-          />
+
         </View>
 
         {leadMeetings.length === 0 ? (
@@ -861,43 +872,6 @@ export function LeadDetailScreen() {
         )}
       </Card>
 
-      {/* ---------- Comments ---------- */}
-      <Card className="bg-white rounded-2xl p-4 mt-4">
-        <Text className="font-lato-bold text-base text-neutral-900 mb-2">
-          Comments
-        </Text>
-
-        {detail?.comments.length ? (
-          detail.comments.map((comment, index) => (
-            <View
-              key={comment.id || index}
-              className="py-3"
-              style={
-                index > 0
-                  ? { borderTopWidth: 1, borderTopColor: '#EEF0FF' }
-                  : undefined
-              }>
-              <Text className="font-lato text-sm text-neutral-900 leading-5">
-                {comment.comment}
-              </Text>
-              <Text className="font-lato text-[11px] text-neutral-600 mt-1">
-                {[comment.employee, comment.created].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-          ))
-        ) : (
-          <Text className="font-lato text-sm text-neutral-600 py-3">
-            No comments on this lead yet.
-          </Text>
-        )}
-
-        <CommentComposer
-          leadId={leadId}
-          onPosted={load}
-          onForbidden={() => setCommentForbidden(true)}
-          forbidden={commentForbidden}
-        />
-      </Card>
 
       <MeetingSheet
         visible={meetingOpen}

@@ -217,7 +217,6 @@ export function MeetingSheet({
   };
 
 
-  console.log(meetingType, "meetingType")
 
   return (
     <Modal
@@ -345,13 +344,14 @@ export function MeetingSheet({
               <Button
                 title="Cancel"
                 size="lg"
-                variant="secondary"
+                variant="primary"
                 className="flex-1"
                 disabled={saving}
                 onPress={close}
               />
               <Button
                 title="Save meeting"
+                variant='secondary'
                 size="lg"
                 className="flex-1"
                 loading={saving}

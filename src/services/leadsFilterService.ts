@@ -64,6 +64,7 @@ export interface LeadFilterRow {
   pipeline: string;
   /** Resolved status name; falls back to the id when the lookup misses. */
   pipelineLabel: string;
+  pipelineColor: string;
   dealDone: string;
   date: string;
   comment: string;
@@ -72,6 +73,7 @@ export interface LeadFilterRow {
 export interface PipelineStatus {
   id: string;
   name: string;
+  color: string;
 }
 
 export interface LeadFilterDropdowns {
@@ -161,6 +163,7 @@ function normalizeLead(row: Record<string, unknown>): LeadFilterRow {
     meetingType: pickString(row, ['meeting_type']),
     meetingStatus: pickString(row, ['meeting_status']),
     pipeline,
+    piplineColor: '',
     pipelineLabel: pipeline,
     dealDone: pickString(row, ['deal_done', 'deals_done']),
     date: pickString(row, ['e_date', 'date']),
@@ -189,8 +192,9 @@ function normalizePipelineStatuses(
     .map(row => ({
       id: pickString(row, ['id', 'status_id', 'pipeline_id']),
       name: pickString(row, ['name', 'status_name', 'pipeline_name']),
+      color: pickString(row, ['color'])
     }))
-    .filter(status => status.id !== '' && status.name !== '');
+    .filter(status => status.id !== '' && status.name !== '' && status.color !== '');
 }
 
 /* -------------------------------------------------------------------------- */
@@ -225,14 +229,16 @@ export function withPipelineNames<T extends LeadFilterRow>(
   rows: T[],
   statuses: PipelineStatus[],
 ): T[] {
-  const byId = new Map(statuses.map(status => [status.id, status.name]));
+  const byId = new Map(statuses.map(status => [status.id, status]));
 
-  console.log(rows, "rows")
-
-  return rows.map(row => ({
-    ...row,
-    pipelineLabel: byId.get(row.pipeline) ?? row.pipelineLabel,
-  }));
+  return rows.map(row => {
+    const status = byId.get(row.pipeline);          // PipelineStatus | undefined
+    return {
+      ...row,
+      pipelineLabel: status?.name ?? row.pipelineLabel,   // string
+      pipelineColor: status?.color ?? '',                  // string
+    };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -362,6 +368,8 @@ export async function fetchLeadFilterDropdowns(): Promise<LeadFilterDropdowns> {
     companies?: Record<string, unknown>[];
     pipeline_statuses?: Record<string, unknown>[];
   }>('leads/filter/dropdowns');
+
+
 
   return {
     cities: normalizeOptions(

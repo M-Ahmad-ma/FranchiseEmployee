@@ -330,6 +330,8 @@ export async function updateLeadStatus(
     status,
   });
 
+  console.log(leadId, field, status, "status")
+
   return data === true || (typeof data === 'object' && data?.status === 'success');
 }
 

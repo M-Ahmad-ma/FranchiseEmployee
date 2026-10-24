@@ -35,7 +35,7 @@ const sizeContainer: Record<ButtonSize, string> = {
 };
 
 interface Props {
-  title: string;
+  title?: string;
   onPress?: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;

@@ -25,6 +25,7 @@ import {
 } from '../../services/leadsFilterService';
 import { ApiError, describeApiError } from '../../services/httpClient';
 import { toApiDate, type Option } from '../../services/utils';
+import { updateLeadStatus } from '../../services/leadDetailService';
 
 interface Props {
   visible: boolean;
@@ -198,6 +199,7 @@ export function FollowUpSheet({
         comment: trimmedComment,
       };
       await createFollowUp(payload);
+      await updateLeadStatus(leadId, "pipeline", "3")
       reset();
       finish();
       await onScheduled();
