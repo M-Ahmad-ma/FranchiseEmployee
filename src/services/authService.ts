@@ -80,6 +80,8 @@ export async function signIn({
     { email: email.trim(), password },
   );
 
+
+
   if (!data?.employee) {
     throw new ApiError(0, 'Login response was malformed. Please try again.');
   }
