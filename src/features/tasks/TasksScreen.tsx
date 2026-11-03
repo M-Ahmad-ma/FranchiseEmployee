@@ -6,6 +6,7 @@ import { CheckCircle2, ChevronRight, ClipboardList } from 'lucide-react-native';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { AlertBanner } from '../../shared/components/AlertBanner';
 import { Badge } from '../../shared/components/Badge';
+import { Button } from '../../shared/components/Button';
 import { Card } from '../../shared/components/Card';
 import { TabGroup, type TabItem } from '../../shared/components/TabGroup';
 import { fetchTasks } from '../../services/tasksService';
@@ -23,6 +24,7 @@ export function TasksScreen() {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [status, setStatus] = useState('0');
   const [rows, setRows] = useState<ModuleRow[]>([]);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pullRefreshing, setPullRefreshing] = useState(false);
@@ -31,7 +33,9 @@ export function TasksScreen() {
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchTasks(status));
+      const next = await fetchTasks(status);
+      setRows(next);
+      setVisibleCount(20);
     } catch (loadError) {
       setRows([]);
       setError(describeApiError(loadError, 'Could not load tasks.'));
@@ -98,7 +102,7 @@ export function TasksScreen() {
         </Card>
       ) : (
         <View style={{ opacity: loading ? 0.55 : 1 }}>
-          {rows.map(row => (
+          {rows.slice(0, visibleCount).map(row => (
             <TouchableOpacity
               key={row.id || row.title}
               activeOpacity={0.85}
@@ -127,6 +131,16 @@ export function TasksScreen() {
           ))}
         </View>
       )}
+
+      {rows.length > visibleCount ? (
+        <Button
+          title={`Show ${Math.min(20, rows.length - visibleCount)} more`}
+          size="lg"
+          variant="outlined"
+          className="mb-3"
+          onPress={() => setVisibleCount(current => current + 20)}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

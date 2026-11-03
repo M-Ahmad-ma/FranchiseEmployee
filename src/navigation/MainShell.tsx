@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useRoute } from '@react-navigation/native';
 import { AppDrawer } from '../shared/components/AppDrawer';
@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { ALL_SIDEBAR_ENTRIES, MODULE_CONFIGS } from './modules';
 import { P } from '../services/permissions';
+import { logScreenEvent } from '../services/perfLogger';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { FollowUpsScreen } from '../features/followUps/FollowUpsScreen';
@@ -129,7 +130,12 @@ export function MainShell() {
   const [active, setActive] =
     useState<keyof MainStackParamList>(initialScreen);
 
+  useEffect(() => {
+    logScreenEvent('MainShell mounted', `initial=${initialScreen}`);
+  }, [initialScreen]);
+
   const reportActive = useCallback((name: string) => {
+    logScreenEvent(`focus ${name}`);
     setActive(name as keyof MainStackParamList);
   }, []);
 

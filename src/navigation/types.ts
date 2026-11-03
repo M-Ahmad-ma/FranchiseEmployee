@@ -104,7 +104,7 @@ export interface ModuleConfig {
   create?: string[];
   edit?: string[];
   delete?: string[];
-  load: () => Promise<ModuleRow[]>;
+  load: (force?: boolean) => Promise<ModuleRow[]>;
   loadOptions?: () => Promise<Record<string, Option[]>>;
   loadEdit?: (id: string) => Promise<{
     values: Record<string, string>;

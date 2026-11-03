@@ -1,5 +1,5 @@
 import { USE_MOCK } from '../config';
-import { get, postForm } from './httpClient';
+import { get, onSessionCleared, postForm } from './httpClient';
 import { delay, pickString, toApiDate } from './utils';
 import { FOLLOWUPS_BELL_FIXTURE, FOLLOWUPS_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
@@ -173,6 +173,57 @@ export async function fetchFollowupsBell(limit = 5): Promise<FollowUpBell> {
     count: Number(data?.count ?? 0),
   };
 }
+
+/**
+ * The bell is mounted by every screen header, so without a cache a single
+ * navigation can produce several identical `/followups/bell` calls. Those
+ * requests serialize on the CI3 session lock and make the next screen feel
+ * stuck. Cache per limit because Home asks for 3 and the header asks for 5.
+ */
+export const FOLLOWUPS_BELL_CACHE_MS = 30_000;
+
+let bellCache: { data: FollowUpBell; at: number; limit: number } | null = null;
+let bellInFlight: {
+  promise: Promise<FollowUpBell>;
+  limit: number;
+} | null = null;
+
+export function clearFollowupsBellCache() {
+  bellCache = null;
+  bellInFlight = null;
+}
+
+export async function fetchFollowupsBellCached(
+  limit = 5,
+  maxAgeMs = FOLLOWUPS_BELL_CACHE_MS,
+): Promise<FollowUpBell> {
+  if (
+    bellCache &&
+    bellCache.limit === limit &&
+    Date.now() - bellCache.at < maxAgeMs
+  ) {
+    return bellCache.data;
+  }
+  if (bellInFlight && bellInFlight.limit === limit) {
+    return bellInFlight.promise;
+  }
+
+  const promise = fetchFollowupsBell(limit)
+    .then(result => {
+      bellCache = { data: result, at: Date.now(), limit };
+      bellInFlight = null;
+      return result;
+    })
+    .catch(error => {
+      bellInFlight = null;
+      throw error;
+    });
+
+  bellInFlight = { promise, limit };
+  return promise;
+}
+
+onSessionCleared(clearFollowupsBellCache);
 
 /** GET /api/team/followups/:lead_id — every follow-up on one lead. */
 export async function fetchLeadFollowups(leadId: string): Promise<FollowUp[]> {

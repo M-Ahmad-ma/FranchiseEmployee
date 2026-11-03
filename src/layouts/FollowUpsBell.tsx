@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, ChevronRight, X } from 'lucide-react-native';
 import {
   fetchFollowupsBell,
+  fetchFollowupsBellCached,
   followUpState,
   type FollowUp,
 } from '../services/followupsService';
@@ -106,52 +107,60 @@ export function FollowUpsBell() {
    */
   const [mounted, setMounted] = useState(false);
 
-  const interval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadingRef = useRef(true);
   const progress = useRef(new Animated.Value(0)).current;
 
-  const poll = useCallback(async () => {
-    if (!hasSession() && !loading) {
+  const poll = useCallback(async (force = false) => {
+    if (!hasSession() && !loadingRef.current) {
       return;
     }
     try {
-      const bell = await fetchFollowupsBell();
+      // Cached calls dedupe the drawer, Home, and the newly focused screen.
+      // A manual bell tap forces a fresh read.
+      const bell = force
+        ? await fetchFollowupsBell()
+        : await fetchFollowupsBellCached();
       setCount(bell.count);
       setFollowups(bell.followups);
     } catch {
       // Keep the last known count rather than flashing it away.
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
+  /**
+   * Poll only while this screen is focused. Every screen in the stack stays
+   * mounted after navigation, so a bare `setInterval` would leave one poll per
+   * visited screen running forever. They all share the same CI3 session, and
+   * those requests serialize — which is exactly what makes switching screens
+   * progressively slower.
+   */
   useFocusEffect(
     useCallback(() => {
-      void poll();
+      // Let the screen's own first request reach the session first. CI3 locks
+      // the session file per request, so a bell call that starts a moment
+      // earlier can make the whole screen wait behind it.
+      const initial = setTimeout(() => {
+        void poll();
+      }, 700);
+      const id = setInterval(() => {
+        void poll();
+      }, REFRESH_INTERVAL_MS);
+      (id as { unref?: () => void }).unref?.();
+      return () => {
+        clearTimeout(initial);
+        clearInterval(id);
+      };
     }, [poll]),
   );
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      void poll();
-    }, REFRESH_INTERVAL_MS);
-    // Keeps the handle from holding the test runner open. React Native types
-    // this as a plain number, so the guard is what makes it safe to call.
-    (id as { unref?: () => void }).unref?.();
-    interval.current = id;
-
-    return () => {
-      if (interval.current) {
-        clearInterval(interval.current);
-        interval.current = null;
-      }
-    };
-  }, [poll]);
-
   const openDrawer = useCallback(() => {
     setOpen(true);
-    // Read on open rather than trusting the polled copy — the bell's badge
-    // may be a minute stale by the time the drawer is actually looked at.
-    void poll();
+    // Read on open rather than trusting the cached copy — the badge may be a
+    // minute stale by the time the drawer is actually looked at.
+    void poll(true);
   }, [poll]);
 
   const closeDrawer = useCallback(() => setOpen(false), []);

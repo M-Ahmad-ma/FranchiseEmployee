@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,6 +29,11 @@ import type {
 } from '../../navigation/types';
 import type { ModuleRow } from '../../services/moduleService';
 import { describeApiError } from '../../services/httpClient';
+import {
+  finishTimer,
+  logScreenEvent,
+  startTimer,
+} from '../../services/perfLogger';
 import { toApiDate, type Option } from '../../services/utils';
 
 /**
@@ -43,7 +48,17 @@ export function ModuleScreen() {
   const { canAll } = useAuth();
   const config = MODULE_CONFIGS[route.name as ModuleRoute];
 
+  useMemo(() => {
+    logScreenEvent('module render', route.name);
+    return true;
+  }, [route.name]);
+
+  useEffect(() => {
+    logScreenEvent('module mounted', route.name);
+  }, [route.name]);
+
   const [rows, setRows] = useState<ModuleRow[]>([]);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [loading, setLoading] = useState(!config?.requiresCity);
   const [error, setError] = useState<string | null>(null);
   const [pullRefreshing, setPullRefreshing] = useState(false);
@@ -70,35 +85,45 @@ export function ModuleScreen() {
   );
 
   const load = useCallback(
-    async (targetCity?: string) => {
+    async (targetCity?: string, force = false) => {
       if (!config) {
         return;
       }
+      const startedAt = startTimer();
+      logScreenEvent('module load start', route.name);
       setLoading(true);
       setError(null);
       try {
         const next = config.requiresCity
-          ? await SHOWS_LOADER(targetCity ?? '')
-          : await config.load();
+          ? await SHOWS_LOADER(targetCity ?? '', force)
+          : await config.load(force);
         setRows(next);
+        setVisibleCount(20);
+        finishTimer('module load', startedAt, `${route.name} rows=${next.length}`);
       } catch (loadError) {
         setRows([]);
         setError(
           describeApiError(loadError, 'Could not load this section.'),
         );
+        finishTimer(
+          'module load FAILED',
+          startedAt,
+          `${route.name} ${describeApiError(loadError, 'unknown')}`,
+        );
       } finally {
         setLoading(false);
       }
     },
-    [config],
+    [config, route.name],
   );
 
   useFocusEffect(
     useCallback(() => {
+      logScreenEvent('module focus effect', route.name);
       if (config && !config.requiresCity) {
         void load();
       }
-    }, [config, load]),
+    }, [config, load, route.name]),
   );
 
   const refresh = useCallback(async () => {
@@ -107,7 +132,7 @@ export function ModuleScreen() {
     }
     setPullRefreshing(true);
     try {
-      await load(config?.requiresCity ? appliedCity : undefined);
+      await load(config?.requiresCity ? appliedCity : undefined, true);
     } finally {
       setPullRefreshing(false);
     }
@@ -117,7 +142,7 @@ export function ModuleScreen() {
     const trimmed = city.trim();
     setAppliedCity(trimmed);
     if (trimmed) {
-      void load(trimmed);
+      void load(trimmed, true);
     } else {
       setRows([]);
       setError(null);
@@ -175,8 +200,6 @@ export function ModuleScreen() {
     }
   };
 
-  console.log("line 178 ModuleScreen", config)
-
   const closeForm = () => {
     if (formSaving) {
       return;
@@ -222,7 +245,8 @@ export function ModuleScreen() {
       }
       setFormOpen(false);
       setFormRow(null);
-      await load(config.requiresCity ? appliedCity : undefined);
+      // Bypass the short list cache so the saved record is visible immediately.
+      await load(config.requiresCity ? appliedCity : undefined, true);
     } catch (submitError) {
       setFormError(
         describeApiError(submitError, 'Could not save this record.'),
@@ -249,6 +273,8 @@ export function ModuleScreen() {
               try {
                 await config.deleteFn?.(row.id);
                 setRows(current => current.filter(item => item.id !== row.id));
+                // The list cache still contains the deleted row.
+                await load(config.requiresCity ? appliedCity : undefined, true);
               } catch (deleteError) {
                 setError(
                   describeApiError(deleteError, 'Could not delete this record.'),
@@ -263,16 +289,17 @@ export function ModuleScreen() {
 
   const openRow = (row: ModuleRow) => {
     if (config?.opensLead) {
-      const leadId = row.values.e_id || row.id;
+      const values = row.values;
+      const leadId = values.e_id || row.id;
       if (!leadId) {
         return;
       }
       navigation.navigate('LeadDetail', {
         leadId,
         investor: row.title,
-        phone: row.values.e_phonenumber,
-        company: row.values.co_name,
-        e_co_id: row.values.e_co_id,
+        phone: values.e_phonenumber,
+        company: values.co_name,
+        e_co_id: values.e_co_id,
       });
       return;
     }
@@ -343,7 +370,7 @@ export function ModuleScreen() {
         <AlertBanner message={config.emptyMessage} />
       ) : (
         <View style={{ opacity: loading ? 0.55 : 1 }}>
-          {rows.map(row => (
+          {rows.slice(0, visibleCount).map(row => (
             <Card key={row.id || row.title} className="bg-white rounded-2xl p-4 mb-3">
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -400,6 +427,16 @@ export function ModuleScreen() {
           ))}
         </View>
       )}
+
+      {rows.length > visibleCount ? (
+        <Button
+          title={`Show ${Math.min(20, rows.length - visibleCount)} more`}
+          size="lg"
+          variant="outlined"
+          className="mb-3"
+          onPress={() => setVisibleCount(current => current + 20)}
+        />
+      ) : null}
 
       {/* Read-only detail */}
       <Modal

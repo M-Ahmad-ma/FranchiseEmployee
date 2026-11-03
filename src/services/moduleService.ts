@@ -1,5 +1,5 @@
 import { USE_MOCK } from '../config';
-import { get, postForm } from './httpClient';
+import { get, onSessionCleared, postForm } from './httpClient';
 import { delay, pickString } from './utils';
 import type { Option } from './utils';
 
@@ -17,10 +17,18 @@ export interface ModuleRow {
   id: string;
   title: string;
   subtitle?: string;
-  details: Array<{ label: string; value: string }>;
-  /** Values used to pre-fill the edit form, keyed by API field name. */
-  values: Record<string, string>;
   raw: Record<string, unknown>;
+  /**
+   * Computed lazily. A 1,500-row list must not build card details and edit
+   * values for every row up front — only the rows actually painted or opened.
+   */
+  readonly details: Array<{ label: string; value: string }>;
+  /** Values used to pre-fill the edit form, keyed by API field name. */
+  readonly values: Record<string, string>;
+}
+
+interface ModuleRowInternal extends ModuleRow {
+  valueKeys: Record<string, string[]>;
 }
 
 export interface RowSpec {
@@ -113,14 +121,6 @@ export function buildRow(
   raw: Record<string, unknown>,
   spec: RowSpec,
 ): ModuleRow {
-  const values: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    const text = printable(value);
-    if (text) {
-      values[key] = text;
-    }
-  }
-
   const excluded = new Set([
     ...spec.idKeys,
     ...spec.titleKeys,
@@ -152,21 +152,53 @@ export function buildRow(
     subtitle = firstPrinted(raw, ['email', 'u_email', 'co_name', 'city_name']);
   }
 
-  const details = Object.entries(raw)
-    .filter(([key, value]) => {
-      if (excluded.has(key)) {
-        return false;
-      }
-      const text = printable(value);
-      return text.length > 0 && text !== title && text !== subtitle;
-    })
-    .slice(0, 6)
-    .map(([key, value]) => ({
-      label: humanizeKey(key),
-      value: printable(value),
-    }));
+  let computedDetails: Array<{ label: string; value: string }> | null = null;
+  const valueKeys: Record<string, string[]> = {};
 
-  return { id, title, subtitle: subtitle || undefined, details, values, raw };
+  const row = {
+    id,
+    title,
+    subtitle: subtitle || undefined,
+    raw,
+    valueKeys,
+    get details() {
+      if (computedDetails) {
+        return computedDetails;
+      }
+      computedDetails = Object.entries(raw)
+        .filter(([key, value]) => {
+          if (excluded.has(key)) {
+            return false;
+          }
+          const text = printable(value);
+          return text.length > 0 && text !== title && text !== subtitle;
+        })
+        .slice(0, 6)
+        .map(([key, value]) => ({
+          label: humanizeKey(key),
+          value: printable(value),
+        }));
+      return computedDetails;
+    },
+    get values() {
+      const values: Record<string, string> = {};
+      for (const [key, value] of Object.entries(raw)) {
+        const text = printable(value);
+        if (text) {
+          values[key] = text;
+        }
+      }
+      for (const [field, keys] of Object.entries(valueKeys)) {
+        const value = pickString(raw, keys);
+        if (value) {
+          values[field] = value;
+        }
+      }
+      return values;
+    },
+  };
+
+  return row as ModuleRowInternal;
 }
 
 function rowsFrom(
@@ -185,31 +217,71 @@ function rowsFrom(
     .map(row => buildRow(row, spec));
 }
 
+/**
+ * A list response can take seconds and contain 1,500+ rows. Keep the built
+ * rows for a short window so drawer switches do not refetch the exact same
+ * payload. Pull-to-refresh calls the service with `force` and bypasses this.
+ */
+export const MODULE_LIST_CACHE_MS = 60_000;
+
+const listCache = new Map<string, { rows: ModuleRow[]; at: number }>();
+const listInFlight = new Map<string, Promise<ModuleRow[]>>();
+
+export function clearModuleListCache() {
+  listCache.clear();
+  listInFlight.clear();
+  companiesCache = null;
+  companiesInFlight = null;
+}
+
+onSessionCleared(clearModuleListCache);
+
 async function readList(
   path: string,
   key: string,
   spec: RowSpec,
+  force = false,
 ): Promise<ModuleRow[]> {
   if (USE_MOCK) {
     await delay();
     return [];
   }
-  const data = await get<Record<string, unknown>>(path);
-  return rowsFrom(data, key, spec);
+
+  const cacheKey = `${path}|${key}`;
+  const cached = listCache.get(cacheKey);
+  if (!force && cached && Date.now() - cached.at < MODULE_LIST_CACHE_MS) {
+    return cached.rows;
+  }
+  if (!force) {
+    const pending = listInFlight.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+  }
+
+  const promise = get<Record<string, unknown>>(path)
+    .then(data => {
+      const rows = rowsFrom(data, key, spec);
+      listCache.set(cacheKey, { rows, at: Date.now() });
+      listInFlight.delete(cacheKey);
+      return rows;
+    })
+    .catch(error => {
+      listInFlight.delete(cacheKey);
+      throw error;
+    });
+
+  listInFlight.set(cacheKey, promise);
+  return promise;
 }
 
 function withValues(
   row: ModuleRow,
   overrides: Record<string, string[]>,
 ): ModuleRow {
-  const values = { ...row.values };
-  for (const [field, keys] of Object.entries(overrides)) {
-    const value = pickString(row.raw, keys);
-    if (value) {
-      values[field] = value;
-    }
-  }
-  return { ...row, values };
+  const internal = row as ModuleRowInternal;
+  internal.valueKeys = { ...internal.valueKeys, ...overrides };
+  return internal;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -223,8 +295,8 @@ const BRAND_SPEC: RowSpec = {
   excludeKeys: ['type'],
 };
 
-export async function fetchBrands(): Promise<ModuleRow[]> {
-  const rows = await readList('brands', 'brands', BRAND_SPEC);
+export async function fetchBrands(force = false): Promise<ModuleRow[]> {
+  const rows = await readList('brands', 'brands', BRAND_SPEC, force);
   return rows.map(row =>
     withValues(row, {
       name: ['name', 'brand_name', 'b_name'],
@@ -251,8 +323,8 @@ const PROPERTY_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchProperties(): Promise<ModuleRow[]> {
-  const rows = await readList('properties', 'property', PROPERTY_SPEC);
+export async function fetchProperties(force = false): Promise<ModuleRow[]> {
+  const rows = await readList('properties', 'property', PROPERTY_SPEC, force);
   return rows.map(row =>
     withValues(row, {
       pName: ['pName', 'p_name', 'name', 'property_name'],
@@ -277,8 +349,8 @@ const REPORT_SPEC: RowSpec = {
   excludeKeys: ['type'],
 };
 
-export async function fetchReports(): Promise<ModuleRow[]> {
-  return readList('reports', 'reports', REPORT_SPEC);
+export async function fetchReports(force = false): Promise<ModuleRow[]> {
+  return readList('reports', 'reports', REPORT_SPEC, force);
 }
 
 export const createReport = (values: Record<string, string>) =>
@@ -295,8 +367,8 @@ const JOB_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchJobs(): Promise<ModuleRow[]> {
-  const rows = await readList('jobs', 'jobs', JOB_SPEC);
+export async function fetchJobs(force = false): Promise<ModuleRow[]> {
+  const rows = await readList('jobs', 'jobs', JOB_SPEC, force);
   return rows.map(row =>
     withValues(row, {
       j_brandName: ['j_brandName', 'j_brand_name', 'brand_name', 'company'],
@@ -327,8 +399,8 @@ const EVENT_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchEvents(): Promise<ModuleRow[]> {
-  const rows = await readList('events', 'events', EVENT_SPEC);
+export async function fetchEvents(force = false): Promise<ModuleRow[]> {
+  const rows = await readList('events', 'events', EVENT_SPEC, force);
   return rows.map(row =>
     withValues(row, {
       title: ['title', 'event_title', 'name'],
@@ -381,32 +453,58 @@ const COMPANY_SPEC: RowSpec = {
   excludeKeys: ['countries', 'categories', 'type'],
 };
 
-export async function fetchCompanies(): Promise<CompaniesResult> {
+let companiesCache: { result: CompaniesResult; at: number } | null = null;
+let companiesInFlight: Promise<CompaniesResult> | null = null;
+
+export async function fetchCompanies(force = false): Promise<CompaniesResult> {
   if (USE_MOCK) {
     await delay();
     return { rows: [], options: { countries: [], categories: [] } };
   }
-  const data = await get<Record<string, unknown>>('companies');
-  return {
-    rows: rowsFrom(data, 'companies', COMPANY_SPEC).map(row =>
-      withValues(row, {
-        name: ['name', 'co_name', 'company_name'],
-        category_id: ['category_id', 'cat_id'],
-        country_id: ['country_id', 'c_id'],
-        city_id: ['city_id', 'city'],
-      }),
-    ),
-    options: {
-      countries: optionsFrom(data?.countries, ['id', 'country_id'], [
-        'name',
-        'country_name',
-      ]),
-      categories: optionsFrom(data?.categories, ['id', 'category_id'], [
-        'name',
-        'category_name',
-      ]),
-    },
-  };
+
+  if (
+    !force &&
+    companiesCache &&
+    Date.now() - companiesCache.at < MODULE_LIST_CACHE_MS
+  ) {
+    return companiesCache.result;
+  }
+  if (!force && companiesInFlight) {
+    return companiesInFlight;
+  }
+
+  companiesInFlight = get<Record<string, unknown>>('companies')
+    .then(data => {
+      const result: CompaniesResult = {
+        rows: rowsFrom(data, 'companies', COMPANY_SPEC).map(row =>
+          withValues(row, {
+            name: ['name', 'co_name', 'company_name'],
+            category_id: ['category_id', 'cat_id'],
+            country_id: ['country_id', 'c_id'],
+            city_id: ['city_id', 'city'],
+          }),
+        ),
+        options: {
+          countries: optionsFrom(data?.countries, ['id', 'country_id'], [
+            'name',
+            'country_name',
+          ]),
+          categories: optionsFrom(data?.categories, ['id', 'category_id'], [
+            'name',
+            'category_name',
+          ]),
+        },
+      };
+      companiesCache = { result, at: Date.now() };
+      companiesInFlight = null;
+      return result;
+    })
+    .catch(error => {
+      companiesInFlight = null;
+      throw error;
+    });
+
+  return companiesInFlight;
 }
 
 /** `GET /companies/:id/edit` also returns the dropdown sources. */
@@ -472,8 +570,8 @@ const USER_SPEC: RowSpec = {
   excludeKeys: ['categories', 'password'],
 };
 
-export async function fetchUsers(): Promise<ModuleRow[]> {
-  const rows = await readList('users', 'users', USER_SPEC);
+export async function fetchUsers(force = false): Promise<ModuleRow[]> {
+  const rows = await readList('users', 'users', USER_SPEC, force);
   return rows.map(row =>
     withValues(row, {
       fname: ['u_firstname', 'firstname', 'fname'],
@@ -503,8 +601,8 @@ const DOWNLOAD_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchDownloads(): Promise<ModuleRow[]> {
-  return readList('downloads', 'download', DOWNLOAD_SPEC);
+export async function fetchDownloads(force = false): Promise<ModuleRow[]> {
+  return readList('downloads', 'download', DOWNLOAD_SPEC, force);
 }
 
 const FRANCHISE_SPEC: RowSpec = {
@@ -514,8 +612,8 @@ const FRANCHISE_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchFranchise(): Promise<ModuleRow[]> {
-  return readList('franchise', 'franchise', FRANCHISE_SPEC);
+export async function fetchFranchise(force = false): Promise<ModuleRow[]> {
+  return readList('franchise', 'franchise', FRANCHISE_SPEC, force);
 }
 
 const ADVERT_SPEC: RowSpec = {
@@ -525,8 +623,8 @@ const ADVERT_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchAdvertisements(): Promise<ModuleRow[]> {
-  return readList('advertisements', 'adverts', ADVERT_SPEC);
+export async function fetchAdvertisements(force = false): Promise<ModuleRow[]> {
+  return readList('advertisements', 'adverts', ADVERT_SPEC, force);
 }
 
 const SUBSCRIBER_SPEC: RowSpec = {
@@ -536,8 +634,8 @@ const SUBSCRIBER_SPEC: RowSpec = {
   excludeKeys: ['categories'],
 };
 
-export async function fetchSubscribers(): Promise<ModuleRow[]> {
-  return readList('subscribers', 'subs', SUBSCRIBER_SPEC);
+export async function fetchSubscribers(force = false): Promise<ModuleRow[]> {
+  return readList('subscribers', 'subs', SUBSCRIBER_SPEC, force);
 }
 
 const SHOW_SPEC: RowSpec = {
@@ -546,8 +644,16 @@ const SHOW_SPEC: RowSpec = {
   subtitleKeys: ['venue', 'city_name'],
 };
 
-export async function fetchShows(city: string): Promise<ModuleRow[]> {
-  return readList(`shows/${encodeURIComponent(city)}`, 'show', SHOW_SPEC);
+export async function fetchShows(
+  city: string,
+  force = false,
+): Promise<ModuleRow[]> {
+  return readList(
+    `shows/${encodeURIComponent(city)}`,
+    'show',
+    SHOW_SPEC,
+    force,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -564,24 +670,38 @@ const LEAD_SPEC: RowSpec = {
 function addLeadValues(row: ModuleRow): ModuleRow {
   const first = pickString(row.raw, ['e_firstname', 'firstname']);
   const last = pickString(row.raw, ['e_lastname', 'lastname']);
-  return {
-    ...row,
-    title: [first, last].filter(Boolean).join(' ') || row.title,
-    subtitle: pickString(row.raw, ['co_name', 'e_emailaddress']) || row.subtitle,
-    values: {
-      ...row.values,
-      e_id: pickString(row.raw, ['e_id', 'lead_id', 'id']),
-      e_co_id: pickString(row.raw, ['e_co_id', 'co_id']),
-    },
+  const internal = row as ModuleRowInternal;
+  internal.title = [first, last].filter(Boolean).join(' ') || row.title;
+  internal.subtitle =
+    pickString(row.raw, ['co_name', 'e_emailaddress']) || row.subtitle;
+  internal.valueKeys = {
+    ...internal.valueKeys,
+    e_id: ['e_id', 'lead_id', 'id'],
+    e_co_id: ['e_co_id', 'co_id'],
   };
+  return internal;
 }
 
-export async function fetchAssignedRequests(): Promise<ModuleRow[]> {
-  const rows = await readList('requests', 'requests', LEAD_SPEC);
+export async function fetchAssignedRequests(
+  force = false,
+): Promise<ModuleRow[]> {
+  const rows = await readList(
+    'requests',
+    'requests',
+    LEAD_SPEC,
+    force,
+  );
   return rows.map(addLeadValues);
 }
 
-export async function fetchInvestorRequests(): Promise<ModuleRow[]> {
-  const rows = await readList('investor-requests', 'investrequests', LEAD_SPEC);
+export async function fetchInvestorRequests(
+  force = false,
+): Promise<ModuleRow[]> {
+  const rows = await readList(
+    'investor-requests',
+    'investrequests',
+    LEAD_SPEC,
+    force,
+  );
   return rows.map(addLeadValues);
 }

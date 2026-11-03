@@ -21,10 +21,10 @@ import { USE_MOCK } from '../config';
  * and switch it back off afterwards. `enabled()` also checks `__DEV__`, so a
  * release build never prints this either way.
  */
-export const LOG_API = false;
+export const LOG_API = true;
 
-/** Print payload bodies. Turn off to log only method, URL, status and timing. */
-export const LOG_API_BODIES = true;
+/** Print payload bodies. Off while diagnosing navigation timing. */
+export const LOG_API_BODIES = false;
 
 /**
  * Serializes to JSON in a single string argument.

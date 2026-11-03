@@ -19,6 +19,7 @@ import { LeadRequestCard } from './LeadRequestCard';
 import {
   fetchFilteredLeads,
   fetchLeadFilterDropdowns,
+  fetchLeadFilterDropdownsCached,
   withMeetings,
   withPipelineNames,
   type LeadFilterDropdowns,
@@ -118,11 +119,15 @@ export function RequestsScreen() {
     }
   }, [canSeeMeetings]);
 
-  const loadDropdowns = useCallback(async () => {
+  const loadDropdowns = useCallback(async (force = false) => {
     setDropdownsLoading(true);
     setDropdownsFailed(false);
     try {
-      setDropdowns(await fetchLeadFilterDropdowns());
+      setDropdowns(
+        force
+          ? await fetchLeadFilterDropdowns()
+          : await fetchLeadFilterDropdownsCached(),
+      );
     } catch {
       // The list and the filters still work without pickers, so this is not a
       // page-level error — but the three fields need to say why they are empty
@@ -257,7 +262,7 @@ export function RequestsScreen() {
     setPullRefreshing(true);
     try {
       clearMeetingsCache();
-      await Promise.all([load(), loadDropdowns(), loadMeetings()]);
+      await Promise.all([load(), loadDropdowns(true), loadMeetings()]);
     } finally {
       setPullRefreshing(false);
     }

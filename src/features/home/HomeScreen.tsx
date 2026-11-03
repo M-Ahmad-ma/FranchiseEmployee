@@ -24,10 +24,12 @@ import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { Card, cardShadow } from '../../shared/components/Card';
 import {
   fetchDashboard,
+  fetchDashboardCached,
   type DashboardStats,
 } from '../../services/dashboardService';
 import {
   fetchFollowupsBell,
+  fetchFollowupsBellCached,
   type FollowUp,
 } from '../../services/followupsService';
 import { FollowUpCard } from '../followUps/FollowUpCard';
@@ -175,35 +177,43 @@ export function HomeScreen() {
    */
   const [pullRefreshing, setPullRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const dash = await fetchDashboard();
-      setStats(dash);
-    } catch {
-      setError('Something went wrong. Please try again.');
-    }
-
-    // The bell is a separate permission from the dashboard. A role that can
-    // see the dashboard but not follow-ups must still get its counters.
-    if (canSeeFollowUps) {
+  const load = useCallback(
+    async (force = false) => {
+      setLoading(true);
+      setError(null);
       try {
-        const bell = await fetchFollowupsBell(3);
-        setFollowUps(bell.followups);
-        setFollowUpCount(bell.count);
+        const dash = force
+          ? await fetchDashboard()
+          : await fetchDashboardCached();
+        setStats(dash);
       } catch {
-        // Ambient information; do not blank the dashboard over it.
+        setError('Something went wrong. Please try again.');
+      }
+
+      // The bell is a separate permission from the dashboard. A role that can
+      // see the dashboard but not follow-ups must still get its counters.
+      if (canSeeFollowUps) {
+        try {
+          // Use the same limit as the header bell so both share one request.
+          const bell = force
+            ? await fetchFollowupsBell(5)
+            : await fetchFollowupsBellCached(5);
+          setFollowUps(bell.followups);
+          setFollowUpCount(bell.count);
+        } catch {
+          // Ambient information; do not blank the dashboard over it.
+          setFollowUps([]);
+          setFollowUpCount(0);
+        }
+      } else {
         setFollowUps([]);
         setFollowUpCount(0);
       }
-    } else {
-      setFollowUps([]);
-      setFollowUpCount(0);
-    }
 
-    setLoading(false);
-  }, [canSeeFollowUps]);
+      setLoading(false);
+    },
+    [canSeeFollowUps],
+  );
 
   // Re-fetch whenever the screen regains focus, so counts and the follow-up
   // preview are never left showing what was true when it was first mounted.
@@ -217,14 +227,14 @@ export function HomeScreen() {
   const refresh = useCallback(async () => {
     setPullRefreshing(true);
     try {
-      await load();
+      await load(true);
     } finally {
       setPullRefreshing(false);
     }
   }, [load]);
 
 
-  const preview = followUps;
+  const preview = followUps.slice(0, 3);
 
   const openFollowUp = (followUp: FollowUp) => {
     if (!canOpenLead) {
@@ -390,7 +400,7 @@ export function HomeScreen() {
             </Text>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={load}
+              onPress={() => void load(true)}
               className="flex-row items-center gap-1.5 mt-3 rounded-full bg-primary-200 px-4 py-2"
               accessibilityRole="button"
               accessibilityLabel="Retry loading overview">

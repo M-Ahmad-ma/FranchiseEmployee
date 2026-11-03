@@ -546,6 +546,7 @@ export function CompanyMediaScreen() {
   const [optionId, setOptionId] = useState<string | undefined>();
 
   const [files, setFiles] = useState<CompanyMediaFile[]>([]);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -590,6 +591,7 @@ export function CompanyMediaScreen() {
     setMediaError(null);
     try {
       setFiles(await fetchCompanyMedia(id));
+      setVisibleCount(20);
     } catch {
       setMediaError('Could not load media for this company.');
     } finally {
@@ -817,7 +819,7 @@ export function CompanyMediaScreen() {
             </View>
           ) : (
             <View className="flex-row flex-wrap gap-3">
-              {visibleFiles.map(file => (
+              {visibleFiles.slice(0, visibleCount).map(file => (
                 <View key={file.mediaId} style={{ width: '47.5%' }}>
                   <MediaTile
                     file={file}
@@ -829,6 +831,16 @@ export function CompanyMediaScreen() {
               ))}
             </View>
           )}
+
+          {visibleFiles.length > visibleCount ? (
+            <Button
+              title={`Show ${Math.min(20, visibleFiles.length - visibleCount)} more`}
+              size="lg"
+              variant="outlined"
+              className="mt-3"
+              onPress={() => setVisibleCount(current => current + 20)}
+            />
+          ) : null}
         </Card>
       ) : null}
 

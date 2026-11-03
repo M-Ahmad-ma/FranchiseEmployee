@@ -96,9 +96,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const authed = await signInRequest(credentials);
       applyUser(authed);
       void saveStoredUser(authed);
-      // `/auth/me` is still worth calling: the server may have changed the
-      // role since the login response, and it verifies the cookie works.
-      void refreshProfile();
+
+      // The login response now carries the permission keys, so an immediate
+      // `/auth/me` would only compete with the first screen's data request for
+      // the same CI3 session. Refresh only when the server did not supply
+      // permission data; otherwise the foreground refresh will pick up changes.
+      if (authed.permissionKeys === null) {
+        void refreshProfile();
+      }
     },
     [applyUser, refreshProfile],
   );

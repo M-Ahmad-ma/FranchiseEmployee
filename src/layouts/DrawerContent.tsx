@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronRight, LogOut } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
@@ -13,10 +13,11 @@ import {
 } from '../navigation/modules';
 import { P } from '../services/permissions';
 import {
-  fetchDashboard,
+  fetchDashboardCached,
   type DashboardStats,
 } from '../services/dashboardService';
-import { fetchFollowupsBell } from '../services/followupsService';
+import { fetchFollowupsBellCached } from '../services/followupsService';
+import { logScreenEvent, markDrawerNavigation } from '../services/perfLogger';
 import type {
   AppStackParamList,
   MainStackParamList,
@@ -60,17 +61,20 @@ export function DrawerContent({ active, onSignOut }: Props) {
     [entries],
   );
 
-  // Re-read the profile from GET /auth/me, the counters from GET /dashboard,
-  // and the follow-up badge from GET /followups/bell each time the drawer
-  // opens. Each request is skipped when its permission is missing.
+  /**
+   * The drawer opens after almost every navigation, so it must not start a
+   * fresh `/auth/me` + `/dashboard` + `/followups/bell` burst each time. The
+   * profile has its own tap-to-refresh action and is also refreshed on app
+   * foreground; the counters and bell use short-lived shared caches.
+   */
   useEffect(() => {
     if (!isOpen) {
       return;
     }
-    void refreshProfile();
+    logScreenEvent('drawer opened');
 
     if (canSeeDashboard) {
-      fetchDashboard()
+      fetchDashboardCached()
         .then(setStats)
         .catch(() => {
           // Leave the last known counts on screen.
@@ -80,7 +84,7 @@ export function DrawerContent({ active, onSignOut }: Props) {
     }
 
     if (canSeeFollowUps) {
-      fetchFollowupsBell()
+      fetchFollowupsBellCached()
         .then(bell => setPendingFollowUps(bell.count))
         .catch(() => {
           // A failed badge poll should not blank the row.
@@ -88,10 +92,41 @@ export function DrawerContent({ active, onSignOut }: Props) {
     } else {
       setPendingFollowUps(null);
     }
-  }, [canSeeDashboard, canSeeFollowUps, isOpen, refreshProfile]);
+  }, [canSeeDashboard, canSeeFollowUps, isOpen]);
 
   const goTo = (screen: SidebarEntry['screen']) => {
-    navigation.navigate('Main', { screen });
+    if (screen === active) {
+      close();
+      return;
+    }
+    markDrawerNavigation(String(screen));
+    /**
+     * Reset the *inner* stack, not the root stack.
+     *
+     * Resetting the root remounts MainShell and its drawer, which costs seconds
+     * and is visible in the logs as `module mounted` arriving before
+     * `MainShell mounted`. Targeting the nested navigator keeps the shell alive
+     * while still dropping previously visited screens, so the working set does
+     * not grow.
+     */
+    const rootState = navigation.getState();
+    const mainRoute = rootState.routes[rootState.index];
+    const nestedKey = mainRoute?.state?.key;
+
+    if (nestedKey) {
+      logScreenEvent('nested reset dispatched', String(screen));
+      navigation.dispatch({
+        ...CommonActions.reset({
+          index: 0,
+          routes: [{ name: screen }],
+        }),
+        target: nestedKey,
+      });
+      logScreenEvent('nested reset returned', String(screen));
+    } else {
+      logScreenEvent('root navigate fallback', String(screen));
+      navigation.navigate('Main', { screen });
+    }
     close();
   };
 
@@ -108,8 +143,6 @@ export function DrawerContent({ active, onSignOut }: Props) {
     .slice(0, 2)
     .map(part => part.charAt(0).toUpperCase())
     .join('');
-
-  console.log("section items", grouped)
 
   return (
     <View className="flex-1 bg-white">

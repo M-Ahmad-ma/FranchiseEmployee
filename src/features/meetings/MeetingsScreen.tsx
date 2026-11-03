@@ -47,6 +47,7 @@ export function MeetingsScreen() {
     canMyMeetings ? 'active' : 'brand',
   );
   const [rows, setRows] = useState<Meeting[]>([]);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pullRefreshing, setPullRefreshing] = useState(false);
@@ -78,6 +79,7 @@ export function MeetingsScreen() {
           ? await fetchBrandMeetings()
           : await fetchMeetings(tab === 'active' ? '1' : '0');
       setRows(next);
+      setVisibleCount(20);
     } catch (loadError) {
       setRows([]);
       setError(describeApiError(loadError, 'Could not load meetings.'));
@@ -159,7 +161,7 @@ export function MeetingsScreen() {
         </Card>
       ) : (
         <View style={{ opacity: loading ? 0.55 : 1 }}>
-          {rows.map((meeting, index) => {
+          {rows.slice(0, visibleCount).map((meeting, index) => {
             const when = [meeting.date, meeting.time].filter(Boolean).join(' · ');
             return (
               <TouchableOpacity
@@ -206,6 +208,16 @@ export function MeetingsScreen() {
           })}
         </View>
       )}
+
+      {rows.length > visibleCount ? (
+        <Button
+          title={`Show ${Math.min(20, rows.length - visibleCount)} more`}
+          size="lg"
+          variant="outlined"
+          className="mb-3"
+          onPress={() => setVisibleCount(current => current + 20)}
+        />
+      ) : null}
 
       {canCreate ? (
         <MeetingSheet

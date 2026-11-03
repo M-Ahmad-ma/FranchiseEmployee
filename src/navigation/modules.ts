@@ -173,7 +173,7 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     view: [P.companiesView],
     create: [P.companiesAdd],
     edit: [P.companiesEdit],
-    load: async () => (await fetchCompanies()).rows,
+    load: async (force?: boolean) => (await fetchCompanies(force)).rows,
     loadOptions: async () => {
       const { options } = await fetchCompanies();
       return { countries: options.countries, categories: options.categories };

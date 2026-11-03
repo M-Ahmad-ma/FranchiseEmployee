@@ -40,6 +40,7 @@ export function FollowUpsScreen() {
 
   const [status, setStatus] = useState('active');
   const [rows, setRows] = useState<FollowUp[]>([]);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -66,7 +67,9 @@ export function FollowUpsScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      setRows(await fetchFollowups(status));
+      const next = await fetchFollowups(status);
+      setRows(next);
+      setVisibleCount(20);
     } catch {
       setLoadError('Something went wrong. Please try again.');
     } finally {
@@ -225,7 +228,7 @@ export function FollowUpsScreen() {
         <View
           style={{ opacity: loading ? 0.55 : 1 }}
           accessibilityState={{ busy: loading }}>
-          {rows.map(row => (
+          {rows.slice(0, visibleCount).map(row => (
             <FollowUpCard
               key={row.id}
               followUp={row}
@@ -250,6 +253,16 @@ export function FollowUpsScreen() {
           ))}
         </View>
       )}
+
+      {rows.length > visibleCount ? (
+        <Button
+          title={`Show ${Math.min(20, rows.length - visibleCount)} more`}
+          size="lg"
+          variant="outlined"
+          className="mb-3"
+          onPress={() => setVisibleCount(current => current + 20)}
+        />
+      ) : null}
 
       {canScheduleFollowUp ? (
         <FollowUpSheet

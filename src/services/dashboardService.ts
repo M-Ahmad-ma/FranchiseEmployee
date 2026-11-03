@@ -1,6 +1,6 @@
 import { USE_MOCK } from '../config';
 import { delay, pickNumber } from './utils';
-import { get } from './httpClient';
+import { get, onSessionCleared } from './httpClient';
 import { DASHBOARD_FIXTURE } from './mockFixtures';
 import { logMock } from './mockLogger';
 
@@ -35,3 +35,44 @@ export async function fetchDashboard(): Promise<DashboardStats> {
     properties: pickNumber(stats ?? {}, ['properties', 'Properties', 'property']),
   };
 }
+
+/**
+ * The drawer and Home ask for the same counters, often within a second of each
+ * other. A short cache plus in-flight dedupe keeps those requests from queueing
+ * behind one another on the CI3 session lock.
+ */
+export const DASHBOARD_CACHE_MS = 30_000;
+
+let cached: { data: DashboardStats; at: number } | null = null;
+let inFlight: Promise<DashboardStats> | null = null;
+
+export function clearDashboardCache() {
+  cached = null;
+  inFlight = null;
+}
+
+export async function fetchDashboardCached(
+  maxAgeMs = DASHBOARD_CACHE_MS,
+): Promise<DashboardStats> {
+  if (cached && Date.now() - cached.at < maxAgeMs) {
+    return cached.data;
+  }
+  if (inFlight) {
+    return inFlight;
+  }
+
+  inFlight = fetchDashboard()
+    .then(result => {
+      cached = { data: result, at: Date.now() };
+      inFlight = null;
+      return result;
+    })
+    .catch(error => {
+      inFlight = null;
+      throw error;
+    });
+
+  return inFlight;
+}
+
+onSessionCleared(clearDashboardCache);
