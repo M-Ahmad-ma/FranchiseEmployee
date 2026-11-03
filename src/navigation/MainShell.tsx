@@ -1,34 +1,133 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useRoute } from '@react-navigation/native';
 import { AppDrawer } from '../shared/components/AppDrawer';
 import { DrawerContent } from '../layouts/DrawerContent';
+import { PermissionGate } from '../shared/components/PermissionGate';
 import { useAuth } from './AuthContext';
-import type { MainStackParamList, RootStackParamList } from './types';
+import type {
+  MainStackParamList,
+  ModuleRoute,
+  RootStackParamList,
+} from './types';
+import { ALL_SIDEBAR_ENTRIES, MODULE_CONFIGS } from './modules';
+import { P } from '../services/permissions';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { FollowUpsScreen } from '../features/followUps/FollowUpsScreen';
 import { CompanyMediaScreen } from '../features/companyMedia/CompanyMediaScreen';
 import { LeadDetailScreen } from '../features/leads/LeadDetailScreen';
+import { ModuleScreen } from '../features/modules/ModuleScreen';
+import { TasksScreen } from '../features/tasks/TasksScreen';
+import { TaskDetailScreen } from '../features/tasks/TaskDetailScreen';
+import { MeetingsScreen } from '../features/meetings/MeetingsScreen';
+import { MeetingDetailScreen } from '../features/meetings/MeetingDetailScreen';
 
 /**
- * The stack carries the detail screen too, so it is typed from the full list —
- * `MainStackParamList` deliberately excludes `LeadDetail` to keep the drawer
+ * The stack carries detail screens too, so it is typed from the full list —
+ * `MainStackParamList` deliberately excludes detail routes to keep the drawer
  * from offering a screen with no entry of its own.
  */
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const MODULE_ROUTES = Object.keys(MODULE_CONFIGS) as ModuleRoute[];
+
+function GuardedModuleScreen() {
+  const route = useRoute();
+  const config = MODULE_CONFIGS[route.name as ModuleRoute];
+  return (
+    <PermissionGate anyOf={config?.view}>
+      <ModuleScreen />
+    </PermissionGate>
+  );
+}
+
+function HomeSection() {
+  return (
+    <PermissionGate anyOf={[P.dashboardView]}>
+      <HomeScreen />
+    </PermissionGate>
+  );
+}
+
+function RequestsSection() {
+  return (
+    <PermissionGate anyOf={[P.leadsView]}>
+      <RequestsScreen />
+    </PermissionGate>
+  );
+}
+
+function FollowUpsSection() {
+  return (
+    <PermissionGate anyOf={[P.followupsView]}>
+      <FollowUpsScreen />
+    </PermissionGate>
+  );
+}
+
+function CompanyMediaSection() {
+  return (
+    <PermissionGate anyOf={[P.companyMediaView]}>
+      <CompanyMediaScreen />
+    </PermissionGate>
+  );
+}
+
+function TasksSection() {
+  return (
+    <PermissionGate anyOf={[P.tasksView]}>
+      <TasksScreen />
+    </PermissionGate>
+  );
+}
+
+function MeetingsSection() {
+  return (
+    <PermissionGate anyOf={[P.meetingsView, P.brandsView]}>
+      <MeetingsScreen />
+    </PermissionGate>
+  );
+}
+
+function TaskDetailSection() {
+  return (
+    <PermissionGate anyOf={[P.tasksView]}>
+      <TaskDetailScreen />
+    </PermissionGate>
+  );
+}
+
+function MeetingDetailSection() {
+  return (
+    <PermissionGate anyOf={[P.meetingsView]}>
+      <MeetingDetailScreen />
+    </PermissionGate>
+  );
+}
+
+function LeadDetailSection() {
+  return (
+    <PermissionGate anyOf={[P.leadsList]}>
+      <LeadDetailScreen />
+    </PermissionGate>
+  );
+}
 
 /**
  * The signed-in area: the app's screens, wrapped in the sliding drawer.
  * The drawer sits above the whole stack so every screen — not just Home —
  * is reachable from it.
- *
- * React Navigation 7 navigators are plain function components and take no
- * `ref`, so the focused route is tracked with `screenListeners` and the
- * drawer navigates through the parent stack's nested params.
  */
 export function MainShell() {
-  const { signOut } = useAuth();
-  const [active, setActive] = useState<keyof MainStackParamList>('Home');
+  const { signOut, canAny } = useAuth();
+  const initialScreen = useMemo<keyof MainStackParamList>(() => {
+    const first = ALL_SIDEBAR_ENTRIES.find(entry => canAny(entry.view));
+    return (first?.screen ?? 'Home') as keyof MainStackParamList;
+  }, [canAny]);
+
+  const [active, setActive] =
+    useState<keyof MainStackParamList>(initialScreen);
 
   const reportActive = useCallback((name: string) => {
     setActive(name as keyof MainStackParamList);
@@ -44,34 +143,55 @@ export function MainShell() {
   );
 
   /**
-   * Lead detail has no drawer entry of its own, so it keeps the Leads Requests
-   * row highlighted — that is the section it is drilled into from.
+   * Detail screens keep the section they were opened from highlighted, because
+   * they have no drawer entry of their own.
    */
   const detailListeners = useMemo(
-    () =>
-      () => ({
-        focus: () => reportActive('Requests'),
-      }),
+    () => (parent: keyof MainStackParamList) => () => ({
+      focus: () => reportActive(parent),
+    }),
     [reportActive],
   );
 
   return (
     <AppDrawer drawer={<DrawerContent active={active} onSignOut={signOut} />}>
       <Stack.Navigator
+        initialRouteName={initialScreen}
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
         }}
         screenListeners={screenListeners}>
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Requests" component={RequestsScreen} />
-        <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
-        <Stack.Screen name="CompanyMedia" component={CompanyMediaScreen} />
+        <Stack.Screen name="Home" component={HomeSection} />
+        <Stack.Screen name="Requests" component={RequestsSection} />
+        <Stack.Screen name="FollowUps" component={FollowUpsSection} />
+        <Stack.Screen name="CompanyMedia" component={CompanyMediaSection} />
+        <Stack.Screen name="Tasks" component={TasksSection} />
+        <Stack.Screen name="Meetings" component={MeetingsSection} />
+
+        {MODULE_ROUTES.map(route => (
+          <Stack.Screen
+            key={route}
+            name={route}
+            component={GuardedModuleScreen}
+          />
+        ))}
+
+        <Stack.Screen
+          name="TaskDetail"
+          component={TaskDetailSection}
+          listeners={detailListeners('Tasks')}
+        />
+        <Stack.Screen
+          name="MeetingDetail"
+          component={MeetingDetailSection}
+          listeners={detailListeners('Meetings')}
+        />
         <Stack.Screen
           name="LeadDetail"
-          component={LeadDetailScreen}
+          component={LeadDetailSection}
           options={{ animation: 'slide_from_right' }}
-          listeners={detailListeners}
+          listeners={detailListeners('Requests')}
         />
       </Stack.Navigator>
     </AppDrawer>

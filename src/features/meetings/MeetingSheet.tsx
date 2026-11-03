@@ -69,6 +69,7 @@ export function MeetingSheet({
   const [description, setDescription] = useState('');
   const [person, setPerson] = useState('');
   const [company, setCompany] = useState<string | undefined>(undefined);
+  const [manualCompanyName, setManualCompanyName] = useState('');
   const [companies, setCompanies] = useState<Option[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -105,6 +106,7 @@ export function MeetingSheet({
     setDescription('');
     setPerson('');
     setCompany(leadCompanyId);
+    setManualCompanyName('');
     void loadCompanies();
   }, [visible, leadCompanyId, loadCompanies]);
 
@@ -123,10 +125,10 @@ export function MeetingSheet({
     // The lead's own company, when the picker does not carry it — the id is
     // still the right one to send, and the name is on the lead row.
     if (company && company === leadCompanyId) {
-      return lead?.companyName || '';
+      return lead?.companyName || manualCompanyName;
     }
-    return '';
-  }, [companies, company, leadCompanyId, lead]);
+    return manualCompanyName;
+  }, [companies, company, lead, leadCompanyId, manualCompanyName]);
 
   const close = () => {
     if (saving) {
@@ -289,24 +291,48 @@ export function MeetingSheet({
                 modalTitle="Meeting type"
               />
 
-              <SelectField
-                label="Company"
-                required
-                placeholder={
-                  loadingCompanies
-                    ? 'Loading companies…'
-                    : companies.length
-                      ? 'Select a company'
-                      : 'No companies available'
-                }
-                value={company}
-                options={companies}
-                onChange={setCompany}
-                loading={loadingCompanies}
-                searchable
-                searchPlaceholder="Search companies"
-                modalTitle="Select a company"
-              />
+              {companies.length > 0 ? (
+                <SelectField
+                  label="Company"
+                  required
+                  placeholder={
+                    loadingCompanies
+                      ? 'Loading companies…'
+                      : 'Select a company'
+                  }
+                  value={company}
+                  options={companies}
+                  onChange={setCompany}
+                  loading={loadingCompanies}
+                  searchable
+                  searchPlaceholder="Search companies"
+                  modalTitle="Select a company"
+                />
+              ) : (
+                <>
+                  {!loadingCompanies ? (
+                    <Text className="font-lato text-[11px] text-neutral-600 mb-3 leading-4">
+                      The company list is not available to your role, so enter
+                      the company id and name directly.
+                    </Text>
+                  ) : null}
+                  <TextField
+                    label="Company ID"
+                    required
+                    placeholder="e.g. 1115"
+                    value={company ?? ''}
+                    onChangeText={setCompany}
+                    keyboardType="numeric"
+                  />
+                  <TextField
+                    label="Company name"
+                    required
+                    placeholder="Company the meeting was with"
+                    value={manualCompanyName}
+                    onChangeText={setManualCompanyName}
+                  />
+                </>
+              )}
 
               <TextField
                 label="Contact person"

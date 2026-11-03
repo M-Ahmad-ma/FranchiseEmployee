@@ -37,7 +37,9 @@ export interface PersistedUser {
   email: string;
   contact: string;
   position: string;
-  isAdminTier: boolean;
+  /** `null` means the server has not supplied permission data yet. */
+  permissionKeys: string[] | null;
+  roles: string[];
 }
 
 export interface StoredSession {
@@ -115,7 +117,21 @@ export async function loadSession(): Promise<StoredSession | null> {
     let user: PersistedUser | undefined;
     if (rawUser) {
       try {
-        user = JSON.parse(rawUser) as PersistedUser;
+        const parsed = JSON.parse(rawUser) as Partial<PersistedUser>;
+        user = {
+          empId: Number(parsed.empId) || 0,
+          name: parsed.name ?? 'Franchise Employee',
+          email: parsed.email ?? '',
+          contact: parsed.contact ?? '',
+          position: parsed.position ?? 'Franchise Employee',
+          // Old cached profiles predate permission storage. `null` is treated
+          // as "not known yet" and is replaced by the verification call; it
+          // must not hide every section during the brief restore window.
+          permissionKeys: Array.isArray(parsed.permissionKeys)
+            ? parsed.permissionKeys.map(String)
+            : null,
+          roles: Array.isArray(parsed.roles) ? parsed.roles.map(String) : [],
+        };
       } catch {
         // A corrupt profile is not worth failing the whole restore over — the
         // cookie is what authenticates, and the profile is re-fetched anyway.

@@ -224,7 +224,8 @@ export async function fetchLeadDetail(leadId: string, e_co_id: string): Promise<
   const path = (e_co_id: string) =>
     `requests/${encodeURIComponent(leadId)}/company/${encodeURIComponent(e_co_id)}`;
 
-  const companyId = pickString(row, ['e_co_id', 'co_id']);
+  const companyId =
+    pickString(row, ['e_co_id', 'co_id']) || e_co_id;
   const empId = pickString(row, ['employee_id', 'emp_id']);
 
   if (__DEV__) {

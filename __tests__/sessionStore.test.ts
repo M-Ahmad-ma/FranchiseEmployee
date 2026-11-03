@@ -31,7 +31,8 @@ const USER = {
   email: 'employee@franchisepk.com',
   contact: '03171919170',
   position: 'Sales Manager',
-  isAdminTier: false,
+  permissionKeys: ['dashboard.view', 'leads.view'],
+  roles: ['Employee (Basic)'],
 };
 
 const MINUTE = 60_000;

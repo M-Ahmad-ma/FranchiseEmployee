@@ -19,6 +19,7 @@ import {
 } from 'lucide-react-native';
 import type { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../navigation/AuthContext';
+import { P } from '../../services/permissions';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 import { Card, cardShadow } from '../../shared/components/Card';
 import {
@@ -120,6 +121,7 @@ interface Shortcut {
   subtitle: string;
   icon: React.ReactNode;
   disc: string;
+  permissions: readonly string[];
 }
 
 const SHORTCUTS: Shortcut[] = [
@@ -129,6 +131,7 @@ const SHORTCUTS: Shortcut[] = [
     subtitle: 'Filter leads by criteria',
     icon: <Filter size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
+    permissions: [P.leadsView],
   },
   {
     screen: 'FollowUps',
@@ -136,6 +139,7 @@ const SHORTCUTS: Shortcut[] = [
     subtitle: 'Leads to chase',
     icon: <PhoneCall size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
+    permissions: [P.followupsView],
   },
   {
     screen: 'CompanyMedia',
@@ -143,6 +147,7 @@ const SHORTCUTS: Shortcut[] = [
     subtitle: 'Images, videos & PDFs',
     icon: <Images size={20} color="#5279AC" />,
     disc: 'bg-primary-200',
+    permissions: [P.companyMediaView],
   },
 ];
 
@@ -150,7 +155,10 @@ const SHORTCUTS: Shortcut[] = [
 export function HomeScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { user } = useAuth();
+  const { user, can, canAny } = useAuth();
+  const canSeeFollowUps = can(P.followupsView);
+  const canOpenLead = can(P.leadsList);
+  const shortcuts = SHORTCUTS.filter(item => canAny(item.permissions));
 
   const now = new Date();
 
@@ -171,20 +179,31 @@ export function HomeScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [dash, bell] = await Promise.all([
-        fetchDashboard(),
-        fetchFollowupsBell(3),
-      ]);
-
+      const dash = await fetchDashboard();
       setStats(dash);
-      setFollowUps(bell.followups);
-      setFollowUpCount(bell.count);
     } catch {
       setError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
     }
-  }, []);
+
+    // The bell is a separate permission from the dashboard. A role that can
+    // see the dashboard but not follow-ups must still get its counters.
+    if (canSeeFollowUps) {
+      try {
+        const bell = await fetchFollowupsBell(3);
+        setFollowUps(bell.followups);
+        setFollowUpCount(bell.count);
+      } catch {
+        // Ambient information; do not blank the dashboard over it.
+        setFollowUps([]);
+        setFollowUpCount(0);
+      }
+    } else {
+      setFollowUps([]);
+      setFollowUpCount(0);
+    }
+
+    setLoading(false);
+  }, [canSeeFollowUps]);
 
   // Re-fetch whenever the screen regains focus, so counts and the follow-up
   // preview are never left showing what was true when it was first mounted.
@@ -207,21 +226,29 @@ export function HomeScreen() {
 
   const preview = followUps;
 
-  const openFollowUp = (followUp: FollowUp) =>
+  const openFollowUp = (followUp: FollowUp) => {
+    if (!canOpenLead) {
+      return;
+    }
     navigation.navigate('LeadDetail', {
       leadId: followUp.leadId,
       investor: followUp.investor,
       phone: followUp.phone,
       company: followUp.company,
     });
+  };
 
 
   const metrics: { label: string; value: number; dot: string }[] = [
-    {
-      label: 'Follow-ups',
-      value: followUpCount,
-      dot: 'bg-secondary-500',
-    },
+    ...(canSeeFollowUps
+      ? [
+          {
+            label: 'Follow-ups',
+            value: followUpCount,
+            dot: 'bg-secondary-500',
+          },
+        ]
+      : []),
     { label: 'Requests', value: stats?.requests ?? 0, dot: 'bg-primary-700' },
     {
       label: 'meetings',
@@ -316,12 +343,14 @@ export function HomeScreen() {
         ))}
       </Card>
 
-      <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1">
-        Go to
-      </Text>
+      {shortcuts.length > 0 ? (
+        <>
+          <Text className="font-lato-black text-lg text-neutral-900 mb-3 px-1">
+            Go to
+          </Text>
 
-      <View className="flex-row flex-wrap justify-between mb-6">
-        {SHORTCUTS.map(shortcut => (
+          <View className="flex-row flex-wrap justify-between mb-6">
+            {shortcuts.map(shortcut => (
           <TouchableOpacity
             key={shortcut.screen}
             activeOpacity={0.8}
@@ -348,30 +377,13 @@ export function HomeScreen() {
               <ChevronRight size={14} color="#A3ABC4" />
             </View>
           </TouchableOpacity>
-        ))}
-      </View>
-
-      <View className="flex-row items-center justify-between mb-3 px-1">
-        <Text className="font-lato-black text-lg text-neutral-900">
-          Needs a follow-up
-        </Text>
-        {preview.length > 0 && (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('FollowUps')}
-            className="flex-row items-center gap-0.5"
-            accessibilityRole="button"
-            accessibilityLabel="View all follow-ups">
-            <Text className="font-lato-bold text-xs text-primary-700">
-              View all
-            </Text>
-            <ChevronRight size={14} color="#5279AC" />
-          </TouchableOpacity>
-        )}
-      </View>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       {error ? (
-        <Card className="bg-white rounded-2xl">
+        <Card className="bg-white rounded-2xl mb-4">
           <View className="items-center px-6 py-8">
             <Text className="text-red-500 text-sm font-lato text-center">
               {error}
@@ -389,39 +401,65 @@ export function HomeScreen() {
             </TouchableOpacity>
           </View>
         </Card>
-      ) : loading && preview.length === 0 ? (
-        // First load only. A refetch keeps the cards on screen instead of
-        // swapping them for a spinner.
-        <Card className="bg-white rounded-2xl">
-          <View className="items-center py-8">
-            <ActivityIndicator size="large" color="#5279AC" />
-          </View>
-        </Card>
-      ) : preview.length === 0 ? (
-        <Card className="bg-white rounded-2xl">
-          <View className="items-center px-6 py-8">
-            <View className="w-14 h-14 rounded-full bg-primary-200 items-center justify-center mb-3">
-              <Inbox size={24} color="#5279AC" />
-            </View>
-            <Text className="font-lato-bold text-base text-neutral-900">
-              You&apos;re all caught up
+      ) : null}
+
+      {canSeeFollowUps ? (
+        <>
+          <View className="flex-row items-center justify-between mb-3 px-1">
+            <Text className="font-lato-black text-lg text-neutral-900">
+              Needs a follow-up
             </Text>
-            <Text className="font-lato text-xs text-neutral-600 text-center mt-1.5 leading-5">
-              No leads are waiting on a follow-up right now. Anything assigned
-              to you will land here first.
-            </Text>
+            {preview.length > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('FollowUps')}
+                className="flex-row items-center gap-0.5"
+                accessibilityRole="button"
+                accessibilityLabel="View all follow-ups">
+                <Text className="font-lato-bold text-xs text-primary-700">
+                  View all
+                </Text>
+                <ChevronRight size={14} color="#5279AC" />
+              </TouchableOpacity>
+            ) : null}
           </View>
-        </Card>
-      ) : (
-        // One card per follow-up, matching the lead request cards.
-        preview.map((followUp, index) => (
-          <FollowUpCard
-            key={followUp.id || index}
-            followUp={followUp}
-            onPress={openFollowUp}
-          />
-        ))
-      )}
+
+          {loading && preview.length === 0 ? (
+            // First load only. A refetch keeps the cards on screen instead of
+            // swapping them for a spinner.
+            <Card className="bg-white rounded-2xl">
+              <View className="items-center py-8">
+                <ActivityIndicator size="large" color="#5279AC" />
+              </View>
+            </Card>
+          ) : preview.length === 0 ? (
+            <Card className="bg-white rounded-2xl">
+              <View className="items-center px-6 py-8">
+                <View className="w-14 h-14 rounded-full bg-primary-200 items-center justify-center mb-3">
+                  <Inbox size={24} color="#5279AC" />
+                </View>
+                <Text className="font-lato-bold text-base text-neutral-900">
+                  You&apos;re all caught up
+                </Text>
+                <Text className="font-lato text-xs text-neutral-600 text-center mt-1.5 leading-5">
+                  No leads are waiting on a follow-up right now. Anything assigned
+                  to you will land here first.
+                </Text>
+              </View>
+            </Card>
+          ) : (
+            // One card per follow-up, matching the lead request cards.
+            preview.map((followUp, index) => (
+              <FollowUpCard
+                key={followUp.id || index}
+                followUp={followUp}
+                onPress={openFollowUp}
+                openable={canOpenLead}
+              />
+            ))
+          )}
+        </>
+      ) : null}
     </DashboardLayout>
   );
 }

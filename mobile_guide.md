@@ -1,6 +1,6 @@
 # Mobile Integration Guide
 
-What changed in the API, and exactly how to use it. Five changes.
+What changed in the API, and exactly how to use it. Six changes.
 
 **Status:** changes are in the working tree, not committed yet. Nothing is live until
 this is deployed — pin your integration to a date, not a branch.
@@ -21,6 +21,7 @@ assistant and it will do the work for you. They're written to be self-contained.
 | 3 | `POST /api/team/leads/info` now checks lead ownership | **Breaking.** Returns `403` where it used to return `201`. |
 | 4 | **New endpoint:** `POST /api/team/leads/:id/comments` | **New.** Lead comments were read-only; you can now post them. |
 | 5 | **New endpoint:** `POST /api/team/meetings/create` | **New.** Meetings were read-only; you can now log one. |
+| 6 | **Roles & permissions on every endpoint** | **Breaking.** Any endpoint can now return `403` with a `permission` key. Gate the UI on `data.permission_keys` from login. |
 
 Two further fixes were already uncommitted before this batch and are also live:
 `requests_single` route parameters were passing the wrong positions, and the login
@@ -28,7 +29,8 @@ method's user-type argument was corrected.
 
 The team login now authenticates against the **same employee login the web app uses**
 (it used to call the user-login model), and the response body carries the employee's
-permission flags. Details in section 2. Nothing about the cookie flow changed.
+permission keys and roles. Details in section 2, and the full rules in section 8.
+Nothing about the cookie flow changed.
 
 **Action items:**
 
@@ -39,7 +41,9 @@ permission flags. Details in section 2. Nothing about the cookie flow changed.
    built something that crossed that line.
 3. Wire up the new lead comment endpoint wherever you render a lead's comment thread.
 4. Wire up the new meeting endpoint wherever you log a meeting against a lead.
-5. Everything else is additive.
+5. Store `permission_keys` from login and hide the screens/buttons the employee cannot
+   use — every endpoint can now answer `403`. See section 8.
+6. Everything else is additive.
 
 ---
 
@@ -76,19 +80,23 @@ class SessionInterceptor(private val store: SessionStore) : Interceptor {
 this. Point `HTTPCookieStorage.shared.cookieAcceptPolicy = .always`, then just do normal
 requests; URLSession persists and replays the cookie for you. Handle `401` by re-logging in.
 
-**The login response now carries your permissions.** The team login authenticates
+**The login response now carries your permission keys.** The team login authenticates
 against the same employee login the web app uses, and the 200 body returns the
-employee's permission flags alongside the profile:
+employee's role-derived permissions alongside the profile:
 
 ```json
 { "status": true, "message": "Login successful",
   "data": { "employee": { "emp_id": 5, "name": "Sumeet Khan", "...": "..." },
-            "permissions": { "company": "1", "request": "1", "meeting": "1", "...": "..." } } }
+            "permissions": { "company": "1", "request": "1", "meeting": "1", "...": "..." },
+            "permission_keys": ["dashboard.view", "leads.view", "leads.list", "meetings.view"],
+            "roles": ["Employee (Basic)", "Team: Leads List", "Team: Meetings"] } }
 ```
 
-Use `data.permissions` to hide menu items the employee has no access to — same flags the
-web UI gates on. `data.employee.emp_special` is now the employee id (it used to be a
-`0`/`1` flag), so don't treat it as a boolean.
+Use `data.permission_keys` to hide menu items the employee has no access to — it is the
+authoritative list and section 8 has the full rules. The older `permissions` object is
+still sent but is now derived from the roles; new code should ignore it.
+`data.employee.emp_special` is the employee id (it used to be a `0`/`1` flag), so don't
+treat it as a boolean.
 
 ---
 
@@ -427,7 +435,7 @@ The lead id is the path segment. `comment` is the only body field.
 | Path | `:id` | int | Yes | Lead id — the same id you use for `GET /api/team/requests/:id` |
 | Body | `comment` | string | Yes | Trimmed server-side; whitespace-only is rejected with `400` |
 
-Both JSON and form-encoded are accepted — unlike task comments (see section 8).
+Both JSON and form-encoded are accepted — unlike task comments (see section 9).
 
 ```bash
 curl -b cookies.txt -X POST "https://example.com/api/team/leads/1421/comments" \
@@ -476,7 +484,7 @@ suspend fun addLeadComment(
 ): ApiResponse<LeadCommentResult>
 ```
 
-`@FormUrlEncoded` works here. Do **not** reuse the task-comment method from section 8 —
+`@FormUrlEncoded` works here. Do **not** reuse the task-comment method from section 9 —
 it's a different endpoint with different behaviour.
 
 ### Prompt for your agent
@@ -626,7 +634,137 @@ suspend fun createMeeting(
 
 ---
 
-## 8. Known pitfalls, not fixed in this batch
+## 8. Roles & permissions (new)
+
+Every endpoint now checks the employee's roles. Before, any logged-in employee could
+call every endpoint. This is the change most likely to break your app in the field.
+
+### Where the permission list comes from
+
+`POST /auth/login` and `GET /auth/me` return two new fields:
+
+| Field | Type | Use |
+|-------|------|-----|
+| `permission_keys` | `string[]` | **Authoritative.** Keys like `leads.view`, `companies.edit` |
+| `roles` | `string[]` | Role names, for display only |
+| `permissions` | object | **Deprecated.** Old `"company": "1"` flags, now computed from the roles. Do not gate new code on it. |
+
+There is no endpoint that lists all possible permissions — the set is fixed and listed
+below.
+
+### The permission for each screen
+
+| Permission | Endpoints |
+|------------|-----------|
+| `dashboard.view` | `GET /dashboard` |
+| `tasks.view` | `GET /tasks`, `GET /tasks/{id}` |
+| `tasks.edit` | `POST /tasks/{id}/comments`, `POST /tasks/{id}/status` |
+| `reports.view` | `GET /reports` |
+| `reports.add` | `POST /reports/create` |
+| `brands.view` | `GET /brands`, `GET /brand-meetings` |
+| `brands.add` | `POST /brands/create`, **`POST /meetings/create`** |
+| `brands.edit` | `POST /brands/{id}/update` |
+| `shows.view` | `GET /shows/{city}` |
+| `properties.view` | `GET /properties` |
+| `properties.add` | `POST /properties/create` |
+| `meetings.view` | `GET /meetings`, `GET /meetings/{id}` |
+| `companies.view` | `GET /companies` |
+| `companies.add` | `POST /companies/create` |
+| `companies.edit` | `POST /companies/{id}/update`, `POST /companies/{id}/edit` |
+| `users.view` | `GET /users` |
+| `users.edit` | `POST /users/{id}/update` |
+| `jobs.view` | `GET /jobs` |
+| `jobs.add` | `POST /jobs/create` |
+| `jobs.edit` | `POST /jobs/{id}/update` |
+| `jobs.delete` | `POST /jobs/{id}/delete` |
+| `events.view` | `GET /events` |
+| `events.add` | `POST /events/create` |
+| `downloads.view` | `GET /downloads` |
+| `resale.view` | `GET /franchise` |
+| `leads.list` | `GET /requests`, `GET /requests/{id}`, both company/emp variants, `GET /investor-requests` |
+| `ads.view` | `GET /advertisements` |
+| `subscribers.view` | `GET /subscribers` |
+| `leads.view` | `GET /leads/filter`, `GET /leads/filter/dropdowns` |
+| `leads.edit` | `POST /leads/info`, `POST /leads/status`, `POST /leads/{id}/comments` |
+| `followups.view` | `GET /followups`, `GET /followups/bell`, `GET /followups/{id}` |
+| `followups.add` | `POST /followups/create` |
+| `followups.edit` | `POST /followups/{id}/done` |
+| `company_media.view` | `GET /media`, `GET /media/company/{id}` |
+| `company_media.add` | `POST /media/upload` |
+| `company_media.delete` | `POST /media/delete/{id}` |
+| *(none)* | `POST /auth/login`, `GET /auth/logout` — public |
+| *(logged in only)* | `GET /auth/me` |
+
+Note `POST /meetings/create` needs **`brands.add`**, not a `meetings.*` key — that is how
+the server maps it. A role that can view meetings but not add brands cannot create one.
+
+### 403 — what it looks like
+
+```json
+{ "status": false, "success": false,
+  "message": "You do not have permission to do this.",
+  "data": null, "permission": "companies.view" }
+```
+
+- `permission` tells you exactly which key is missing. Log it — it is the fastest way to
+  see which screen should have been hidden.
+- **401 comes before 403.** A missing/expired session is always `401 "Unauthorized"`;
+  re-login then retry. Never re-login on a `403` — the session is fine, the role is not.
+- `403` with a different message (`"You can only update leads assigned to you."`) is the
+  lead-ownership rule from sections 3 and 6, not a permission problem. It has **no**
+  `permission` key.
+
+### What the app should do
+
+1. After login, persist `permission_keys`.
+2. Build the menu from it: hide a screen or button whose key is absent. Do not let the
+   user tap into a `403`.
+3. Call `GET /auth/me` when the app opens and when it returns to the foreground. The
+   admin can change roles at any time; `/auth/me` returns the updated
+   `permission_keys` and `roles` without a logout.
+4. On `403`: show "You don't have access to this", refresh `/auth/me`, and leave the
+   screen. Do not retry.
+5. Ignore the legacy `permissions` object for gating.
+
+### Retrofit
+
+```kotlin
+// after login and after every /auth/me
+prefs.permissionKeys = response.data.permissionKeys.toSet()
+
+fun can(key: String) = prefs.permissionKeys.contains(key)
+
+// 403 handling
+if (code == 403 && body.permission != null) {
+    showMessage("You don't have access to this")
+    refreshMe()          // GET /api/team/auth/me
+    navigateBack()
+}
+```
+
+### Prompt for your agent
+
+> Every endpoint in this API now enforces role-based permissions. `POST /auth/login` and
+> `GET /auth/me` return `data.permission_keys` (array of strings like `leads.view`,
+> `companies.edit`) and `data.roles`.
+>
+> Store `permission_keys` after login and after every `/auth/me` call. Gate navigation
+> and buttons on membership: hide a screen whose permission is missing rather than
+> letting the user open it and hit a 403. The permission required per endpoint is listed
+> in mobile_guide.md section 8 — note that `POST /meetings/create` requires `brands.add`.
+>
+> Add a global 403 handler: read `data.permission` from the body, show "You don't have
+> access to this", call `GET /api/team/auth/me` to refresh `permission_keys`, and leave
+> the screen. Do not retry the request and do not re-login — a 403 means the session is
+> valid but the role lacks the permission. A 401 is the only case that needs re-login.
+>
+> Call `GET /api/team/auth/me` on app start and on foreground so admin role changes show
+> up without a logout. Ignore the legacy `data.permissions` object (`"company": "1"` …)
+> for gating — it is deprecated and derived from the roles.
+
+---
+
+## 9. Known pitfalls, not fixed in this batch
 
 These are live now and will cost you a debugging session if you're not aware.
 
@@ -661,7 +799,7 @@ so a meeting row cannot be edited after it is created. `GET /api/team/meetings` 
 
 ---
 
-## 9. Verification checklist before you ship
+## 10. Verification checklist before you ship
 
 1. `grep -r "properties/status"` returns nothing.
 2. `POST /api/team/leads/status` with a JSON body returns `200`, not `400`.
@@ -676,3 +814,8 @@ so a meeting row cannot be edited after it is created. `GET /api/team/meetings` 
 10. Creating a meeting returns `201`, and the meeting shows up in `GET /api/team/meetings`.
 11. Sending `meeting_type: "physical"` returns `400 Invalid meeting_type` — you are
     sending the number, not the label.
+12. Login response contains `permission_keys` and `roles`, and your app stores them.
+13. An endpoint outside `permission_keys` returns `403` with a `permission` key, and the
+    app hides that screen instead of retrying.
+14. `GET /auth/me` after an admin role change returns the new `permission_keys` without
+    a re-login.

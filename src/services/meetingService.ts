@@ -96,6 +96,38 @@ function normalizeList(rows: Record<string, unknown>[] | undefined): Meeting[] {
   return (rows ?? []).map(normalizeMeeting);
 }
 
+/** GET /brand-meetings — brand-side meetings, guarded by `brands.view`. */
+export async function fetchBrandMeetings(): Promise<Meeting[]> {
+  if (USE_MOCK) {
+    await delay();
+    const result = normalizeList(MEETINGS_FIXTURE as Record<string, unknown>[]);
+    logMock('brand-meetings', result);
+    return result;
+  }
+
+  const data = await get<{ meetings?: Record<string, unknown>[] }>(
+    'brand-meetings',
+  );
+  return normalizeList(data?.meetings);
+}
+
+/**
+ * GET /meetings/:id — the single-meeting payload is `{ request, categories }`,
+ * so the meeting row itself is under `request`.
+ */
+export async function fetchMeetingDetail(id: string): Promise<Meeting | null> {
+  if (USE_MOCK) {
+    await delay();
+    const row = MEETINGS_FIXTURE[0] as Record<string, unknown> | undefined;
+    return row ? normalizeMeeting(row) : null;
+  }
+
+  const data = await get<{ request?: Record<string, unknown> }>(
+    `meetings/${encodeURIComponent(id)}`,
+  );
+  return data?.request ? normalizeMeeting(data.request) : null;
+}
+
 export async function fetchMeetings(status?: string): Promise<Meeting[]> {
   if (USE_MOCK) {
     await delay();

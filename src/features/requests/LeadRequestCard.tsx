@@ -88,9 +88,15 @@ function Chip({
 interface Props {
   row: LeadRowWithMeetings;
   onPress: (row: LeadRowWithMeetings) => void;
+  /** Detail requires `leads.list`; the list itself only needs `leads.view`. */
+  openable?: boolean;
 }
 
-export function LeadRequestCard({ row, onPress }: Props) {
+export function LeadRequestCard({
+  row,
+  onPress,
+  openable = true,
+}: Props) {
   const meeting = row.nextMeeting;
 
   const meetingOpen = meeting ? meeting.status !== '0' : false;
@@ -111,10 +117,13 @@ export function LeadRequestCard({ row, onPress }: Props) {
 
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
+      activeOpacity={openable ? 0.9 : 1}
+      disabled={!openable}
       onPress={() => onPress(row)}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${investor}${location ? `, ${location}` : ''}`}
+      accessibilityRole={openable ? 'button' : undefined}
+      accessibilityLabel={
+        openable ? `Open ${investor}${location ? `, ${location}` : ''}` : undefined
+      }
       className="bg-white rounded-2xl border border-neutral-200 p-4 mb-3"
       style={cardShadow}>
       <View className="flex-row items-center gap-2">
@@ -124,10 +133,12 @@ export function LeadRequestCard({ row, onPress }: Props) {
           {investor}
         </Text>
 
-        <View className='flex items-center gap-1 flex-row'>
-          <Text className='text-sm text-neutral-900 font-lato'>view</Text>
-          <ChevronRight size={13} color="gray" />
-        </View>
+        {openable ? (
+          <View className='flex items-center gap-1 flex-row'>
+            <Text className='text-sm text-neutral-900 font-lato'>view</Text>
+            <ChevronRight size={13} color="gray" />
+          </View>
+        ) : null}
       </View>
 
       {location ? (

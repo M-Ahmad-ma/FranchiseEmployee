@@ -9,7 +9,6 @@ import {
   LEAD_FILTER_META_FIXTURE,
   LEAD_FILTER_ROWS_FIXTURE,
 } from './mockFixtures';
-import { pick } from '@react-native-documents/picker';
 
 /**
  * GET /api/team/leads/filter and its dropdown sources.
@@ -163,7 +162,7 @@ function normalizeLead(row: Record<string, unknown>): LeadFilterRow {
     meetingType: pickString(row, ['meeting_type']),
     meetingStatus: pickString(row, ['meeting_status']),
     pipeline,
-    piplineColor: '',
+    pipelineColor: '',
     pipelineLabel: pipeline,
     dealDone: pickString(row, ['deal_done', 'deals_done']),
     date: pickString(row, ['e_date', 'date']),

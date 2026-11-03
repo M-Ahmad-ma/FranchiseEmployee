@@ -15,8 +15,53 @@ export const EMPLOYEE_FIXTURE = {
   contact: '03171919170',
   image: 'Sumeet.jpeg',
   position: 'Sales Manager',
-  emp_special: '0',
+  // On the live API this is the employee id, not a 0/1 boolean.
+  emp_special: '5',
 };
+
+/**
+ * Mock permissions mirror a fully enabled employee so every screen can be
+ * exercised while `USE_MOCK` is true. Real gating always uses `/auth/login` or
+ * `/auth/me`.
+ */
+export const EMPLOYEE_PERMISSIONS_FIXTURE = [
+  'dashboard.view',
+  'leads.view',
+  'leads.list',
+  'leads.edit',
+  'followups.view',
+  'followups.add',
+  'followups.edit',
+  'meetings.view',
+  'tasks.view',
+  'tasks.edit',
+  'reports.view',
+  'reports.add',
+  'brands.view',
+  'brands.add',
+  'brands.edit',
+  'properties.view',
+  'properties.add',
+  'shows.view',
+  'companies.view',
+  'companies.add',
+  'companies.edit',
+  'users.view',
+  'users.edit',
+  'jobs.view',
+  'jobs.add',
+  'jobs.edit',
+  'jobs.delete',
+  'events.view',
+  'events.add',
+  'downloads.view',
+  'resale.view',
+  'ads.view',
+  'subscribers.view',
+  'company_media.view',
+  'company_media.add',
+  'company_media.delete',
+];
 
 export const DASHBOARD_FIXTURE = {
   tasks: 14,
@@ -49,11 +94,11 @@ export const LEAD_FILTER_DROPDOWNS_FIXTURE = {
     { label: 'Pakola Beverages', value: '1118' },
   ],
   pipelineStatuses: [
-    { id: '1', name: 'New Lead' },
-    { id: '2', name: 'Contacted' },
-    { id: '3', name: 'Qualified' },
-    { id: '4', name: 'Negotiation' },
-    { id: '5', name: 'Closed' },
+    { id: '1', name: 'New Lead', color: '#5279AC' },
+    { id: '2', name: 'Contacted', color: '#0081A7' },
+    { id: '3', name: 'Qualified', color: '#00A572' },
+    { id: '4', name: 'Negotiation', color: '#D97706' },
+    { id: '5', name: 'Closed', color: '#565E74' },
   ],
 };
 

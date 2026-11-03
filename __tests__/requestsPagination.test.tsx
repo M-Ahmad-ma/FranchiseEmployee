@@ -1,5 +1,4 @@
 import React from 'react';
-import { ActivityIndicator, Text } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { RequestsScreen } from '../src/features/requests/RequestsScreen';
 import { fetchFilteredLeads } from '../src/services/leadsFilterService';
@@ -36,8 +35,19 @@ jest.mock('../src/services/meetingService', () => ({
   clearMeetingsCache: jest.fn(),
 }));
 
+// The bell polls on an interval and is unrelated to the pagination behaviour
+// under test. Keeping it unmounted also lets Jest exit without open timers.
+jest.mock('../src/layouts/FollowUpsBell', () => ({
+  FollowUpsBell: () => null,
+}));
+
 jest.mock('../src/navigation/AuthContext', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({
+    user: null,
+    can: () => true,
+    canAny: () => true,
+    canAll: () => true,
+  }),
 }));
 
 jest.mock('@react-navigation/native', () => ({

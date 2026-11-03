@@ -24,6 +24,8 @@ import {
 } from '../services/followupsService';
 import { hasSession } from '../services/httpClient';
 import { FollowUpCard } from '../features/followUps/FollowUpCard';
+import { useAuth } from '../navigation/AuthContext';
+import { P } from '../services/permissions';
 import type { RootStackParamList } from '../navigation/types';
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -86,6 +88,8 @@ function byUrgency(a: FollowUp, b: FollowUp) {
 export function FollowUpsBell() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { can } = useAuth();
+  const canOpenLead = can(P.leadsList);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(360, Math.round(width * 0.86));
@@ -177,7 +181,7 @@ export function FollowUpsBell() {
 
   const openLead = (followUp: FollowUp) => {
     setOpen(false);
-    if (!followUp.leadId) {
+    if (!followUp.leadId || !canOpenLead) {
       return;
     }
     navigation.navigate('LeadDetail', {
@@ -346,6 +350,7 @@ export function FollowUpsBell() {
                     key={followUp.id || index}
                     followUp={followUp}
                     onPress={openLead}
+                    openable={canOpenLead}
                     showComment
                   />
                 ))

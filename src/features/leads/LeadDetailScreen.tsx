@@ -9,8 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import {
   CalendarPlus,
@@ -58,6 +57,7 @@ import { meetingTypeLabel } from '../../services/leadsFilterService';
 import { Message, whatsappShareUrl } from '../../services/whatsapp';
 import { ApiError, describeApiError } from '../../services/httpClient';
 import { useAuth } from '../../navigation/AuthContext';
+import { P } from '../../services/permissions';
 import type { RootStackParamList } from '../../navigation/types';
 
 
@@ -110,10 +110,15 @@ const sortByRecency = (meetings: Meeting[]) =>
   });
 
 export function LeadDetailScreen() {
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'LeadDetail'>>();
-  const { user } = useAuth();
+  const { can } = useAuth();
+  const canEditLead = can(P.leadsEdit);
+  const canViewFollowUps = can(P.followupsView);
+  const canEditFollowUps = can(P.followupsEdit);
+  const canAddFollowUp = can(P.followupsAdd);
+  const canViewMeetings = can(P.meetingsView);
+  const canViewPipeline = can(P.leadsView);
+  const canCreateMeeting = can(P.brandsAdd);
   const { leadId, investor, phone, company, e_co_id } = route.params;
   // Only the Leads screen passes this. The other three entry points (home
   // preview, follow-ups list, bell) reach a lead without it, and the detail
@@ -201,6 +206,10 @@ export function LeadDetailScreen() {
   );
 
   const loadStageOptions = useCallback(async () => {
+    if (!canViewPipeline) {
+      setPipelineStatuses([]);
+      return;
+    }
     setStageLoading(true);
     try {
       const statuses = await fetchPipelineStatusesCached();
@@ -217,7 +226,7 @@ export function LeadDetailScreen() {
     } finally {
       setStageLoading(false);
     }
-  }, []);
+  }, [canViewPipeline]);
 
   useFocusEffect(
     useCallback(() => {
@@ -234,12 +243,16 @@ export function LeadDetailScreen() {
     field: 'pipeline' | 'deal_done',
     value: string,
   ) => {
+    if (!canEditLead) {
+      return;
+    }
     // Read before anything is patched below: this is where the lead was
     // before the change, which is what a backed-out follow-up puts back.
     const currentValue =
       field === 'pipeline' ? detail?.pipeline : detail?.dealDone;
 
     const opensFollowUpForm =
+      canAddFollowUp &&
       field === 'pipeline' &&
       followUpStageId !== null &&
       value === followUpStageId;
@@ -343,8 +356,12 @@ export function LeadDetailScreen() {
       const [detailResult, followupResult, meetingsResult] =
         await Promise.allSettled([
           fetchLeadDetail(leadId, companyId),
-          fetchLeadFollowups(leadId),
-          fetchAllMeetingsCached(),
+          canViewFollowUps
+            ? fetchLeadFollowups(leadId)
+            : Promise.resolve([]),
+          canViewMeetings
+            ? fetchAllMeetingsCached()
+            : Promise.resolve({ meetings: [], complete: true }),
         ]);
 
       if (detailResult.status === 'fulfilled') {
@@ -387,7 +404,7 @@ export function LeadDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [leadId]);
+  }, [canViewFollowUps, canViewMeetings, companyId, leadId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -396,6 +413,9 @@ export function LeadDetailScreen() {
   );
 
   const onFollowUpDone = useCallback(async (id: string) => {
+    if (!canEditFollowUps) {
+      return;
+    }
     setBusyFollowUpId(id);
     try {
       await markFollowUpDone(id);
@@ -411,7 +431,7 @@ export function LeadDetailScreen() {
     } finally {
       setBusyFollowUpId(null);
     }
-  }, []);
+  }, [canEditFollowUps]);
 
   /**
    * Puts the lead back where it was when the follow-up form was closed
@@ -550,34 +570,44 @@ export function LeadDetailScreen() {
       ) : null}
 
       {/* ---------- Stage ---------- */}
-      <Card className="bg-white rounded-2xl p-4 mb-3">
-        <Text className="font-lato-bold text-base text-neutral-900 mb-3">
-          Stage
-        </Text>
-
-        <SelectField
-          label="Pipeline status"
-          placeholder={stageLoading ? 'Loading statuses…' : 'Select status'}
-          value={detail?.pipeline}
-          options={pipelineOptions}
-          onChange={value => void onStageChange('pipeline', value)}
-          searchable
-          searchPlaceholder="Search statuses"
-          loading={stageLoading || stageSaving !== null || reverting}
-          disabled={stageForbidden || reverting}
-          hint={
-            followUpStageId !== null && detail?.pipeline === followUpStageId
-              ? `This lead is in ${followUpStageName}. Choosing it again opens the follow-up form.`
-              : undefined
-          }
-        />
-
-        {stageError ? (
-          <Text className="text-red-500 font-lato text-xs mt-2">
-            {stageError}
+      {canViewPipeline ? (
+        <Card className="bg-white rounded-2xl p-4 mb-3">
+          <Text className="font-lato-bold text-base text-neutral-900 mb-3">
+            Stage
           </Text>
-        ) : null}
-      </Card>
+
+          <SelectField
+            label="Pipeline status"
+            placeholder={stageLoading ? 'Loading statuses…' : 'Select status'}
+            value={detail?.pipeline}
+            options={pipelineOptions}
+            onChange={value => void onStageChange('pipeline', value)}
+            searchable
+            searchPlaceholder="Search statuses"
+            loading={stageLoading || stageSaving !== null || reverting}
+            disabled={!canEditLead || stageForbidden || reverting}
+            hint={
+              canEditLead &&
+              followUpStageId !== null &&
+              detail?.pipeline === followUpStageId
+                ? `This lead is in ${followUpStageName}. Choosing it again opens the follow-up form.`
+                : undefined
+            }
+          />
+
+          {!canEditLead ? (
+            <Text className="font-lato text-xs text-neutral-600 mt-2">
+              Your role can view the stage but not change it.
+            </Text>
+          ) : null}
+
+          {stageError ? (
+            <Text className="text-red-500 font-lato text-xs mt-2">
+              {stageError}
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
 
 
       <Card className="bg-white rounded-2xl p-4  mb-3">
@@ -609,12 +639,18 @@ export function LeadDetailScreen() {
           </Text>
         )}
 
-        <CommentComposer
-          leadId={leadId}
-          onPosted={load}
-          onForbidden={() => setCommentForbidden(true)}
-          forbidden={commentForbidden}
-        />
+        {canEditLead ? (
+          <CommentComposer
+            leadId={leadId}
+            onPosted={load}
+            onForbidden={() => setCommentForbidden(true)}
+            forbidden={commentForbidden}
+          />
+        ) : (
+          <Text className="font-lato text-xs text-neutral-600 mt-3 pt-3 border-t border-neutral-200">
+            Your role can read comments but not add them.
+          </Text>
+        )}
       </Card>
 
 
@@ -710,16 +746,20 @@ export function LeadDetailScreen() {
         ) : null}
 
 
-        <Button
-          variant='secondary'
-          icon={<Camera size={19} color="#FFFFFF" />}
-          onPress={() => setUploadOpen(true)}
-        />
+        {canEditLead ? (
+          <Button
+            variant='secondary'
+            icon={<Camera size={19} color="#FFFFFF" />}
+            onPress={() => setUploadOpen(true)}
+          />
+        ) : null}
 
-        <Button
-          icon={<CalendarPlus size={19} color="#FFFFFF" />}
-          onPress={() => setMeetingOpen(true)}
-        />
+        {canCreateMeeting ? (
+          <Button
+            icon={<CalendarPlus size={19} color="#FFFFFF" />}
+            onPress={() => setMeetingOpen(true)}
+          />
+        ) : null}
       </Card>
 
 
@@ -761,6 +801,7 @@ export function LeadDetailScreen() {
       </Card>
 
       {/* ---------- Meetings ---------- */}
+      {canViewMeetings ? (
       <Card className="bg-white rounded-2xl p-4 mt-4">
         <View className="flex-row items-center justify-between gap-3 mb-3">
           <Text className="font-lato-bold text-base text-neutral-900">
@@ -810,8 +851,10 @@ export function LeadDetailScreen() {
           })
         )}
       </Card>
+      ) : null}
 
       {/* ---------- Follow-up history ---------- */}
+      {canViewFollowUps ? (
       <Card className="bg-white rounded-2xl p-4 mt-4">
         {/* No "Schedule" button: moving the lead into the follow-up stage is
             what schedules one, so the form opens from the Stage card instead
@@ -849,7 +892,7 @@ export function LeadDetailScreen() {
                     <Text className="font-lato text-xs text-neutral-500">
                       Done
                     </Text>
-                  ) : (
+                  ) : canEditFollowUps ? (
                     <Button
                       title="Mark done"
                       size="sm"
@@ -858,7 +901,7 @@ export function LeadDetailScreen() {
                       disabled={busyFollowUpId !== null}
                       onPress={() => onFollowUpDone(followUp.id)}
                     />
-                  )}
+                  ) : null}
                 </View>
 
                 {followUp.comment ? (
@@ -871,34 +914,40 @@ export function LeadDetailScreen() {
           })
         )}
       </Card>
+      ) : null}
 
+      {canCreateMeeting ? (
+        <MeetingSheet
+          visible={meetingOpen}
+          leadId={leadId}
+          lead={detail}
+          companyId={e_co_id}
+          onClose={() => setMeetingOpen(false)}
+          onCreated={onMeetingCreated}
+        />
+      ) : null}
 
-      <MeetingSheet
-        visible={meetingOpen}
-        leadId={leadId}
-        lead={detail}
-        companyId={e_co_id}
-        onClose={() => setMeetingOpen(false)}
-        onCreated={onMeetingCreated}
-      />
+      {canAddFollowUp && canEditLead ? (
+        <FollowUpSheet
+          visible={scheduling}
+          initialLeadId={leadId}
+          leadLabel={title}
+          onClose={() => setScheduling(false)}
+          // Backing out of the form abandons the follow-up, so the stage change
+          // that opened it has to be undone.
+          onDismissed={() => void revertFollowUpStage()}
+          onScheduled={onFollowUpScheduled}
+        />
+      ) : null}
 
-      <FollowUpSheet
-        visible={scheduling}
-        initialLeadId={leadId}
-        leadLabel={title}
-        onClose={() => setScheduling(false)}
-        // Backing out of the form abandons the follow-up, so the stage change
-        // that opened it has to be undone.
-        onDismissed={() => void revertFollowUpStage()}
-        onScheduled={onFollowUpScheduled}
-      />
-
-      <LeadImageSheet
-        visible={uploadOpen}
-        leadId={leadId}
-        onClose={() => setUploadOpen(false)}
-        onUploaded={load}
-      />
+      {canEditLead ? (
+        <LeadImageSheet
+          visible={uploadOpen}
+          leadId={leadId}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={load}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

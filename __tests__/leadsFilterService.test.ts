@@ -7,8 +7,8 @@ import {
 
 describe('withPipelineNames', () => {
   const statuses = [
-    { id: '1', name: 'New Lead' },
-    { id: '2', name: 'Contacted' },
+    { id: '1', name: 'New Lead', color: '#5279AC' },
+    { id: '2', name: 'Contacted', color: '#0081A7' },
   ];
 
   const makeRow = (pipeline: string): LeadFilterRow => ({
@@ -24,6 +24,7 @@ describe('withPipelineNames', () => {
     meetingStatus: '',
     pipeline,
     pipelineLabel: pipeline,
+    pipelineColor: '',
     dealDone: '',
     date: '',
     comment: '',
@@ -56,6 +57,7 @@ describe('withPipelineNames', () => {
     meetingStatus: '',
         pipeline: '2',
         pipelineLabel: '2',
+        pipelineColor: '',
         dealDone: '',
         date: '',
         comment: '',

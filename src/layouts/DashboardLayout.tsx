@@ -14,6 +14,8 @@ import { ArrowLeft, Menu } from 'lucide-react-native';
 import { useDrawer } from '../shared/components/AppDrawer';
 import { FollowUpsBell } from './FollowUpsBell';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../navigation/AuthContext';
+import { P } from '../services/permissions';
 
 const circleButton =
   'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
@@ -47,7 +49,8 @@ export function DashboardLayout({
 }: Props) {
   const insets = useSafeAreaInsets();
   const { open } = useDrawer();
-  const navigation = useNavigation()
+  const { can } = useAuth();
+  const navigation = useNavigation();
 
   return (
     <View className="flex-1 bg-light" style={{ paddingTop: insets.top }}>
@@ -118,7 +121,7 @@ export function DashboardLayout({
                 )}
               </View>
 
-              {showBell && <FollowUpsBell />}
+              {showBell && can(P.followupsView) ? <FollowUpsBell /> : null}
             </View>
           </View>
           <View className="px-4 pt-6">{children}</View>

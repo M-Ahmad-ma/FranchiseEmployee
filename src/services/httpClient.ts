@@ -18,11 +18,18 @@ import { clearStoredSession, saveSession } from './sessionStore';
 
 export class ApiError extends Error {
   readonly status: number;
+  /**
+   * Set only on a role/permission `403`, and only when the server identified
+   * the missing key. A lead-ownership `403` carries no permission, so callers
+   * can keep showing their own "belongs to another employee" message.
+   */
+  readonly permission?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, permission?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.permission = permission;
   }
 }
 
@@ -53,6 +60,8 @@ interface Envelope<T> {
   data: T;
   /** Top-level pagination block, present only on `/leads/filter`. */
   meta?: Partial<PageMeta>;
+  /** Missing key on a role-based `403`; absent on ownership `403`s. */
+  permission?: string;
 }
 
 /** Pagination block emitted by `MY_Controller::response_paginate()`. */
@@ -70,6 +79,7 @@ export interface Paged<T> {
 }
 
 type UnauthorizedHandler = () => void;
+type ForbiddenHandler = (permission: string) => void;
 
 /* -------------------------------------------------------------------------- */
 /*  Session cookie                                                             */
@@ -78,6 +88,7 @@ type UnauthorizedHandler = () => void;
 let sessionCookie: string | null = null;
 let sessionExpiresAt = 0;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
+let forbiddenHandler: ForbiddenHandler | null = null;
 
 export const hasSession = () => sessionCookie !== null;
 
@@ -123,6 +134,18 @@ export function onSessionCleared(handler: SessionClearedHandler): () => void {
 
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
   unauthorizedHandler = handler;
+}
+
+/**
+ * Registers the global role-permission `403` handler.
+ *
+ * This is deliberately separate from the 401 handler: a 403 means the session
+ * is valid but the role changed or the UI offered something it should not
+ * have. Re-login would not help, so the handler must only refresh `/auth/me` and
+ * let the permission gates re-render.
+ */
+export function setForbiddenHandler(handler: ForbiddenHandler | null) {
+  forbiddenHandler = handler;
 }
 
 /** Pulls just the `ci_session` pair out of a Set-Cookie header. */
@@ -262,10 +285,15 @@ function unwrap<T>(status: number, raw: string | null): Envelope<T> {
     throw new ApiError(401, payload?.message || EXPIRED_MESSAGE);
   }
 
+  if (status === 403 && payload?.permission) {
+    forbiddenHandler?.(payload.permission);
+  }
+
   if (status < 200 || status >= 300 || !payload || payload.status !== true) {
     throw new ApiError(
       status,
       payload?.message || 'Something went wrong. Please try again.',
+      payload?.permission,
     );
   }
 

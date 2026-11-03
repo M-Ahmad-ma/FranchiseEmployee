@@ -1,12 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import {
-  CalendarDays,
-  ChevronRight,
-  MapPin,
-  Phone,
-  PhoneCall,
-} from 'lucide-react-native';
+import { CalendarDays, ChevronRight, Phone, PhoneCall } from 'lucide-react-native';
 import { cardShadow } from '../../shared/components/Card';
 import {
   followUpState,

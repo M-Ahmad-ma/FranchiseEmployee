@@ -13,6 +13,8 @@ import { Pagination } from '../../shared/components/Pagination';
 import { SelectField } from '../../shared/components/SelectField';
 import { TextField } from '../../shared/components/TextField';
 import { useGrid } from '../../shared/hooks/useGrid';
+import { useAuth } from '../../navigation/AuthContext';
+import { P } from '../../services/permissions';
 import { LeadRequestCard } from './LeadRequestCard';
 import {
   fetchFilteredLeads,
@@ -50,6 +52,9 @@ const HELPER_TEXT =
 export function RequestsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { can } = useAuth();
+  const canSeeMeetings = can(P.meetingsView);
+  const canOpenLead = can(P.leadsList);
   const { itemWidth } = useGrid({ inset: 64, gap: 16 });
   const fieldStyle = { width: itemWidth };
 
@@ -89,6 +94,11 @@ export function RequestsScreen() {
   const [meetingsFailed, setMeetingsFailed] = useState(false);
 
   const loadMeetings = useCallback(async () => {
+    if (!canSeeMeetings) {
+      setMeetings([]);
+      setMeetingsFailed(false);
+      return;
+    }
     setMeetingsFailed(false);
     try {
       // Cached: `/meetings` returns the employee's whole history with no lead
@@ -106,7 +116,7 @@ export function RequestsScreen() {
       setMeetings([]);
       setMeetingsFailed(true);
     }
-  }, []);
+  }, [canSeeMeetings]);
 
   const loadDropdowns = useCallback(async () => {
     setDropdownsLoading(true);
@@ -160,7 +170,7 @@ export function RequestsScreen() {
             meetings,
           ),
         );
-      } catch (e) {
+      } catch {
         setError('Something went wrong. Please try again.');
       } finally {
         setLoading(false);
@@ -253,7 +263,10 @@ export function RequestsScreen() {
     }
   }, [load, loadDropdowns, loadMeetings]);
 
-  const openLead = (row: LeadRowWithMeetings) =>
+  const openLead = (row: LeadRowWithMeetings) => {
+    if (!canOpenLead) {
+      return;
+    }
     navigation.navigate('LeadDetail', {
       leadId: row.id,
       investor: row.investor,
@@ -261,6 +274,7 @@ export function RequestsScreen() {
       company: row.brand,
       e_co_id: row.e_co_id,
     });
+  };
 
   return (
     <DashboardLayout
@@ -468,7 +482,12 @@ export function RequestsScreen() {
           style={{ opacity: loading ? 0.55 : 1 }}
           accessibilityState={{ busy: loading }}>
           {rows.map(row => (
-            <LeadRequestCard key={row.id} row={row} onPress={openLead} />
+            <LeadRequestCard
+              key={row.id}
+              row={row}
+              onPress={openLead}
+              openable={canOpenLead}
+            />
           ))}
         </View>
       )}

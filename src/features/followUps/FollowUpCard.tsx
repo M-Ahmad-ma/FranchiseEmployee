@@ -96,6 +96,8 @@ const discTone: Record<FollowUpState, { disc: string; icon: string }> = {
 interface Props {
   followUp: FollowUp;
   onPress: (followUp: FollowUp) => void;
+  /** Opening a lead needs `leads.list`; the card itself only needs `followups.view`. */
+  openable?: boolean;
   /** Shows the follow-up comment under the contact lines. */
   showComment?: boolean;
   /**
@@ -119,6 +121,7 @@ interface Props {
 export function FollowUpCard({
   followUp,
   onPress,
+  openable = true,
   showComment = false,
   companyLabel,
   action,
@@ -130,11 +133,15 @@ export function FollowUpCard({
 
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
+      activeOpacity={openable ? 0.9 : 1}
+      disabled={!openable}
       onPress={() => onPress(followUp)}
-      accessibilityRole="button"
-      accessibilityLabel={`Follow up with ${investor}${when ? ` on ${when}` : ''
-        }`}
+      accessibilityRole={openable ? 'button' : undefined}
+      accessibilityLabel={
+        openable
+          ? `Follow up with ${investor}${when ? ` on ${when}` : ''}`
+          : undefined
+      }
       className="bg-white rounded-2xl border border-neutral-200 p-4 mb-3"
       style={cardShadow}>
       {/* ---------- Name, status, chevron ---------- */}
@@ -157,7 +164,7 @@ export function FollowUpCard({
           </Text>
         </View>
 
-        <ChevronRight size={16} color="#A3ABC4" />
+        {openable ? <ChevronRight size={16} color="#A3ABC4" /> : null}
       </View>
 
       {/* ---------- When ---------- */}

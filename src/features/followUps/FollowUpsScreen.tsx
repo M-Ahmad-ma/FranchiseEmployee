@@ -17,6 +17,8 @@ import {
 } from '../../services/followupsService';
 import { fetchCompanyOptionsCached } from '../../services/leadsFilterService';
 import { ApiError } from '../../services/httpClient';
+import { useAuth } from '../../navigation/AuthContext';
+import { P } from '../../services/permissions';
 import type { RootStackParamList } from '../../navigation/types';
 
 const STATUS_TABS: TabItem[] = [
@@ -29,6 +31,12 @@ const STATUS_TABS: TabItem[] = [
 export function FollowUpsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { can } = useAuth();
+  const canSeeCompanyNames = can(P.leadsView);
+  const canOpenLead = can(P.leadsList);
+  const canCloseFollowUp = can(P.followupsEdit);
+  const canScheduleFollowUp =
+    can(P.followupsAdd) && can(P.leadsView) && can(P.leadsEdit);
 
   const [status, setStatus] = useState('active');
   const [rows, setRows] = useState<FollowUp[]>([]);
@@ -72,6 +80,10 @@ export function FollowUpsScreen() {
    * screen.
    */
   const loadCompanyNames = useCallback(async () => {
+    if (!canSeeCompanyNames) {
+      setCompanyNames({});
+      return;
+    }
     try {
       const options = await fetchCompanyOptionsCached();
       const next: Record<string, string> = {};
@@ -82,7 +94,7 @@ export function FollowUpsScreen() {
     } catch {
       // Silent by design — see above.
     }
-  }, []);
+  }, [canSeeCompanyNames]);
 
   useFocusEffect(
     useCallback(() => {
@@ -141,13 +153,17 @@ export function FollowUpsScreen() {
     return /^\d+$/.test(raw) ? undefined : raw;
   };
 
-  const openLead = (followUp: FollowUp) =>
+  const openLead = (followUp: FollowUp) => {
+    if (!canOpenLead) {
+      return;
+    }
     navigation.navigate('LeadDetail', {
       leadId: followUp.leadId,
       investor: followUp.investor,
       phone: followUp.phone,
       company: followUp.company,
     });
+  };
 
   return (
     <DashboardLayout
@@ -164,12 +180,14 @@ export function FollowUpsScreen() {
             }`}
           tone="primary"
         />
-        <Button
-          title="Schedule follow-up"
-          size="sm"
-          icon={<CalendarClock size={14} color="#FFFFFF" />}
-          onPress={() => setScheduling(true)}
-        />
+        {canScheduleFollowUp ? (
+          <Button
+            title="Schedule follow-up"
+            size="sm"
+            icon={<CalendarClock size={14} color="#FFFFFF" />}
+            onPress={() => setScheduling(true)}
+          />
+        ) : null}
       </View>
 
       {notice && (
@@ -212,10 +230,11 @@ export function FollowUpsScreen() {
               key={row.id}
               followUp={row}
               onPress={openLead}
+              openable={canOpenLead}
               showComment
               companyLabel={companyLabel(row.company)}
               action={
-                row.status.toLowerCase() === 'done' ? undefined : (
+                canCloseFollowUp && row.status.toLowerCase() !== 'done' ? (
                   <Button
                     title="Mark done"
                     size="sm"
@@ -225,18 +244,20 @@ export function FollowUpsScreen() {
                     icon={<CheckCircle2 size={14} color="#5279AC" />}
                     onPress={() => onDone(row.id)}
                   />
-                )
+                ) : undefined
               }
             />
           ))}
         </View>
       )}
 
-      <FollowUpSheet
-        visible={scheduling}
-        onClose={() => setScheduling(false)}
-        onScheduled={load}
-      />
+      {canScheduleFollowUp ? (
+        <FollowUpSheet
+          visible={scheduling}
+          onClose={() => setScheduling(false)}
+          onScheduled={load}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

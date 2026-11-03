@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Modal,
@@ -16,8 +17,6 @@ import {
   Link2,
   MapPin,
   RefreshCw,
-  // Trash2 is only referenced by the commented-out delete button.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   Trash2,
   Upload,
   Video,
@@ -50,6 +49,8 @@ import {
   type PickedFile,
 } from '../../services/mediaService';
 import { ApiError } from '../../services/httpClient';
+import { useAuth } from '../../navigation/AuthContext';
+import { P } from '../../services/permissions';
 import type { Option } from '../../services/utils';
 
 interface Props {
@@ -461,9 +462,13 @@ const KIND_TONE = {
 function MediaTile({
   file,
   onOpen,
+  onDelete,
+  deleting = false,
 }: {
   file: CompanyMediaFile;
   onOpen: (file: CompanyMediaFile) => void;
+  onDelete?: (file: CompanyMediaFile) => void;
+  deleting?: boolean;
 }) {
   const Icon = KIND_ICON[file.kind];
 
@@ -505,28 +510,33 @@ function MediaTile({
         <Text className="font-lato text-[10px] text-neutral-500">
           {file.created || '—'}
         </Text>
-        {/* Delete is disabled for now. To restore it, add back the */}
-        {/* `deleting: boolean` and `onDelete: () => void` props on */}
-        {/* MediaTile above and pass them from the call site. */}
-        {/* <TouchableOpacity */}
-        {/*   activeOpacity={0.8} */}
-        {/*   disabled={deleting} */}
-        {/*   onPress={onDelete} */}
-        {/*   className="w-8 h-8 rounded-full bg-neutral-200 items-center justify-center" */}
-        {/*   accessibilityRole="button" */}
-        {/*   accessibilityLabel={`Delete ${file.fileName || file.optionName}`}> */}
-        {/*   {deleting ? ( */}
-        {/*     <ActivityIndicator size="small" color="#6F778E" /> */}
-        {/*   ) : ( */}
-        {/*     <Trash2 size={14} color="#6F778E" /> */}
-        {/*   )} */}
-        {/* </TouchableOpacity> */}
+        {onDelete ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            disabled={deleting}
+            onPress={() => onDelete(file)}
+            className="w-8 h-8 rounded-full bg-neutral-200 items-center justify-center"
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${file.fileName || file.optionName}`}>
+            {deleting ? (
+              <ActivityIndicator size="small" color="#6F778E" />
+            ) : (
+              <Trash2 size={14} color="#6F778E" />
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View className="w-8 h-8" />
+        )}
       </View>
     </View>
   );
 }
 
 export function CompanyMediaScreen() {
+  const { can } = useAuth();
+  const canUpload = can(P.companyMediaAdd);
+  const canDelete = can(P.companyMediaDelete);
+
   const [companies, setCompanies] = useState<MediaCompany[]>([]);
   const [mediaOptions, setMediaOptions] = useState<MediaOption[]>([]);
   const [dropdownsLoading, setDropdownsLoading] = useState(true);
@@ -538,9 +548,6 @@ export function CompanyMediaScreen() {
   const [files, setFiles] = useState<CompanyMediaFile[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
-  // Both belong to the delete button, which is commented out in MediaTile.
-  // Kept so re-enabling it is just uncommenting.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [viewing, setViewing] = useState<CompanyMediaFile | null>(null);
@@ -652,24 +659,39 @@ export function CompanyMediaScreen() {
     setMediaError(null);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const confirmDelete = (file: CompanyMediaFile) => {
-    // A brand location row only loses its row — the server leaves the URL alone.
-    void (async () => {
-      setDeletingId(file.mediaId);
-      try {
-        await deleteMedia(file.mediaId);
-        setFiles(current => current.filter(row => row.mediaId !== file.mediaId));
-      } catch (deleteError) {
-        setMediaError(
-          deleteError instanceof ApiError && deleteError.status === 404
-            ? 'That file has already been deleted.'
-            : 'Could not delete that file.',
-        );
-      } finally {
-        setDeletingId(null);
-      }
-    })();
+    Alert.alert(
+      'Delete media',
+      `Delete "${file.fileName || file.optionName}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            // A brand location row only loses its row — the server leaves the
+            // URL alone.
+            void (async () => {
+              setDeletingId(file.mediaId);
+              try {
+                await deleteMedia(file.mediaId);
+                setFiles(current =>
+                  current.filter(row => row.mediaId !== file.mediaId),
+                );
+              } catch (deleteError) {
+                setMediaError(
+                  deleteError instanceof ApiError && deleteError.status === 404
+                    ? 'That file has already been deleted.'
+                    : 'Could not delete that file.',
+                );
+              } finally {
+                setDeletingId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -753,13 +775,15 @@ export function CompanyMediaScreen() {
               </Text>
             </View>
 
-            {/* <Button */}
-            {/*   title="Upload" */}
-            {/*   size="sm" */}
-            {/*   disabled={!optionId} */}
-            {/*   icon={<Upload size={14} color="#FFFFFF" />} */}
-            {/*   onPress={() => setUploadOpen(true)} */}
-            {/* /> */}
+            {canUpload ? (
+              <Button
+                title="Upload"
+                size="sm"
+                disabled={!optionId}
+                icon={<Upload size={14} color="#FFFFFF" />}
+                onPress={() => setUploadOpen(true)}
+              />
+            ) : null}
           </View>
 
           {!optionId && mediaOptions.length > 0 && (
@@ -795,7 +819,12 @@ export function CompanyMediaScreen() {
             <View className="flex-row flex-wrap gap-3">
               {visibleFiles.map(file => (
                 <View key={file.mediaId} style={{ width: '47.5%' }}>
-                  <MediaTile file={file} onOpen={openFile} />
+                  <MediaTile
+                    file={file}
+                    onOpen={openFile}
+                    onDelete={canDelete ? confirmDelete : undefined}
+                    deleting={deletingId === file.mediaId}
+                  />
                 </View>
               ))}
             </View>
@@ -805,16 +834,18 @@ export function CompanyMediaScreen() {
 
       <MediaViewer file={viewing} onClose={() => setViewing(null)} />
 
-      <UploadSheet
-        visible={uploadOpen}
-        companyId={companyId ?? ''}
-        optionId={optionId ?? ''}
-        mediaOptions={mediaOptions}
-        onClose={() => setUploadOpen(false)}
-        onUploaded={() =>
-          companyId ? loadMedia(companyId) : Promise.resolve()
-        }
-      />
+      {canUpload ? (
+        <UploadSheet
+          visible={uploadOpen}
+          companyId={companyId ?? ''}
+          optionId={optionId ?? ''}
+          mediaOptions={mediaOptions}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() =>
+            companyId ? loadMedia(companyId) : Promise.resolve()
+          }
+        />
+      ) : null}
     </DashboardLayout>
   );
 }
