@@ -844,11 +844,13 @@ export function CompanyMediaScreen() {
         </Card>
       ) : null}
 
-      <MediaViewer file={viewing} onClose={() => setViewing(null)} />
+      {viewing ? (
+        <MediaViewer file={viewing} onClose={() => setViewing(null)} />
+      ) : null}
 
-      {canUpload ? (
+      {canUpload && uploadOpen ? (
         <UploadSheet
-          visible={uploadOpen}
+          visible
           companyId={companyId ?? ''}
           optionId={optionId ?? ''}
           mediaOptions={mediaOptions}

@@ -103,6 +103,7 @@ describe('mergeAuthUser', () => {
   const previous: AuthUser = {
     empId: 5,
     name: 'Sumeet Khan',
+    image: 'Sumeet.jpeg',
     email: 'employee@franchisepk.com',
     contact: '0317',
     position: 'Sales Manager',

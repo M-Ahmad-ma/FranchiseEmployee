@@ -1,5 +1,6 @@
 import { MOCK_DELAY_MS } from '../config';
 
+export const IMAGE_BASE = "https://www.franchisepk.com/public/user_img"
 export const delay = (ms: number = MOCK_DELAY_MS) =>
   new Promise<void>(resolve => setTimeout(resolve, ms));
 

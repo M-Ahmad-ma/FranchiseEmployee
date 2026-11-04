@@ -94,11 +94,28 @@ export interface ModuleFormField {
   optionsKey?: string;
 }
 
+export interface ModuleSummaryField {
+  label: string;
+  keys: string[];
+}
+
+export interface ModulePresentation {
+  /** Fields shown as chips on the card and at the top of the detail view. */
+  summary?: ModuleSummaryField[];
+  /** Long-form fields shown as a description block. */
+  descriptionKeys?: string[];
+  /** Fields included in the search box. */
+  searchKeys?: string[];
+  /** Status-like fields rendered as a badge. */
+  statusKeys?: string[];
+}
+
 export interface ModuleConfig {
   route: ModuleRoute;
   label: string;
   hint: string;
   group: ModuleGroup;
+  presentation?: ModulePresentation;
   /** Sidebar entry is shown when any of these keys is present. */
   view: string[];
   create?: string[];

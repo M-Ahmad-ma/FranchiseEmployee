@@ -102,6 +102,24 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchProperties,
     createFn: createProperty,
     emptyMessage: 'No properties found.',
+    presentation: {
+      summary: [
+        { label: 'Email', keys: ['pEmail', 'p_email', 'email'] },
+        { label: 'Phone', keys: ['pPhone', 'p_phone', 'phone', 'contact'] },
+        { label: 'City', keys: ['Pcity', 'p_city', 'city', 'city_name'] },
+      ],
+      searchKeys: [
+        'pName',
+        'p_name',
+        'name',
+        'pEmail',
+        'email',
+        'pPhone',
+        'phone',
+        'Pcity',
+        'city',
+      ],
+    },
     fields: [
       { key: 'pName', label: 'Property name', required: true },
       { key: 'pEmail', label: 'Email', type: 'text' },
@@ -120,6 +138,10 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchReports,
     createFn: createReport,
     emptyMessage: 'No reports found.',
+    presentation: {
+      descriptionKeys: ['description', 'report_description'],
+      searchKeys: ['title', 'report_title', 'name', 'description'],
+    },
     fields: [
       { key: 'title', label: 'Report title', required: true },
       { key: 'description', label: 'Description', type: 'multiline' },
@@ -140,6 +162,27 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     updateFn: updateJob,
     deleteFn: deleteJob,
     emptyMessage: 'No jobs found.',
+    presentation: {
+      summary: [
+        {
+          label: 'Brand',
+          keys: ['j_brandName', 'j_brand_name', 'brand_name', 'company'],
+        },
+        { label: 'Salary', keys: ['j_salary', 'salary'] },
+        {
+          label: 'Qualification',
+          keys: ['j_qualification', 'qualification'],
+        },
+      ],
+      searchKeys: [
+        'j_jobTitle',
+        'job_title',
+        'title',
+        'j_brandName',
+        'brand_name',
+        'j_qualification',
+      ],
+    },
     fields: [
       { key: 'j_brandName', label: 'Brand name', required: true },
       { key: 'j_jobTitle', label: 'Job title', required: true },
@@ -158,6 +201,13 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchEvents,
     createFn: createEvent,
     emptyMessage: 'No events found.',
+    presentation: {
+      summary: [
+        { label: 'Date', keys: ['date', 'event_date'] },
+        { label: 'Venue', keys: ['venue', 'event_venue'] },
+      ],
+      searchKeys: ['title', 'event_title', 'name', 'venue', 'date'],
+    },
     fields: [
       { key: 'title', label: 'Event title', required: true },
       { key: 'date', label: 'Date', type: 'date', required: true },
@@ -232,6 +282,11 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     view: [P.downloadsView],
     load: fetchDownloads,
     emptyMessage: 'No downloads found.',
+    presentation: {
+      summary: [{ label: 'Category', keys: ['category_name', 'category'] }],
+      descriptionKeys: ['description', 'desc'],
+      searchKeys: ['title', 'name', 'file_name', 'category_name'],
+    },
   },
 
   Franchise: {
@@ -242,6 +297,14 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     view: [P.resaleView],
     load: fetchFranchise,
     emptyMessage: 'No franchise listings found.',
+    presentation: {
+      summary: [
+        { label: 'City', keys: ['city_name', 'city'] },
+        { label: 'Category', keys: ['category_name', 'category'] },
+      ],
+      descriptionKeys: ['description', 'desc'],
+      searchKeys: ['name', 'title', 'franchise_name', 'city_name', 'category_name'],
+    },
   },
 
   Advertisements: {
@@ -252,6 +315,14 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     view: [P.adsView],
     load: fetchAdvertisements,
     emptyMessage: 'No advertisements found.',
+    presentation: {
+      summary: [
+        { label: 'Company', keys: ['company_name', 'company'] },
+        { label: 'Category', keys: ['category_name', 'category'] },
+      ],
+      descriptionKeys: ['description', 'desc'],
+      searchKeys: ['title', 'name', 'ad_title', 'company_name', 'category_name'],
+    },
   },
 
   Subscribers: {
@@ -262,6 +333,13 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     view: [P.subscribersView],
     load: fetchSubscribers,
     emptyMessage: 'No subscribers found.',
+    presentation: {
+      summary: [
+        { label: 'Name', keys: ['name', 'sub_name'] },
+        { label: 'Subscribed', keys: ['created', 'created_at', 'date'] },
+      ],
+      searchKeys: ['email', 'sub_email', 'name', 'created'],
+    },
   },
 
   AssignedRequests: {
@@ -273,6 +351,22 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchAssignedRequests,
     emptyMessage: 'No assigned leads found.',
     opensLead: true,
+    presentation: {
+      summary: [
+        { label: 'Phone', keys: ['e_phonenumber', 'phone', 'contact'] },
+        { label: 'Company', keys: ['co_name', 'brand', 'company_name'] },
+        { label: 'Date', keys: ['e_date', 'date'] },
+        { label: 'Stage', keys: ['pipeline', 'pipeline_name'] },
+      ],
+      descriptionKeys: ['req_comment', 'comment'],
+      searchKeys: [
+        'e_firstname',
+        'e_lastname',
+        'e_phonenumber',
+        'co_name',
+        'e_emailaddress',
+      ],
+    },
   },
 
   InvestorRequests: {
@@ -284,6 +378,22 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchInvestorRequests,
     emptyMessage: 'No investor requests found.',
     opensLead: true,
+    presentation: {
+      summary: [
+        { label: 'Phone', keys: ['e_phonenumber', 'phone', 'contact'] },
+        { label: 'Company', keys: ['co_name', 'brand', 'company_name'] },
+        { label: 'Date', keys: ['e_date', 'date'] },
+        { label: 'Stage', keys: ['pipeline', 'pipeline_name'] },
+      ],
+      descriptionKeys: ['req_comment', 'comment', 'e_message', 'message'],
+      searchKeys: [
+        'e_firstname',
+        'e_lastname',
+        'e_phonenumber',
+        'co_name',
+        'e_emailaddress',
+      ],
+    },
   },
 
   Shows: {
@@ -295,6 +405,14 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: () => Promise.resolve([]),
     emptyMessage: 'Enter a city to load its shows.',
     requiresCity: true,
+    presentation: {
+      summary: [
+        { label: 'Venue', keys: ['venue', 'show_venue'] },
+        { label: 'City', keys: ['city_name', 'city'] },
+        { label: 'Date', keys: ['date', 'show_date'] },
+      ],
+      searchKeys: ['title', 'name', 'show_name', 'venue', 'city_name'],
+    },
   },
 };
 

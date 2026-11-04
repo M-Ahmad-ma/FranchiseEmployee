@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,6 +22,7 @@ import type {
   AppStackParamList,
   MainStackParamList,
 } from '../navigation/types';
+import { IMAGE_BASE } from '../services/utils';
 
 interface Props {
   active: keyof MainStackParamList;
@@ -137,13 +138,6 @@ export function DrawerContent({ active, onSignOut }: Props) {
     onSignOut();
   };
 
-  const initials = (user?.name ?? 'FE')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part.charAt(0).toUpperCase())
-    .join('');
-
   return (
     <View className="flex-1 bg-white">
       {/* ----------------------------- Profile ---------------------------- */}
@@ -164,15 +158,13 @@ export function DrawerContent({ active, onSignOut }: Props) {
           accessibilityLabel="Refresh profile">
           <View className="flex-row items-center gap-3">
             <View
-              className="w-12 h-12 rounded-full items-center justify-center"
+              className="w-12 h-12 rounded-full items-center justify-center overflow-hidden"
               style={{
                 backgroundColor: 'rgba(255,255,255,0.14)',
                 borderWidth: 1,
                 borderColor: 'rgba(255,255,255,0.28)',
               }}>
-              <Text className="font-lato-black text-base text-white">
-                {initials || 'FE'}
-              </Text>
+              <Image source={{ uri: `${IMAGE_BASE}/${user?.image}` }} className='w-full h-full' />
             </View>
 
             <View className="flex-1">

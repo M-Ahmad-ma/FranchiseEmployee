@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +16,7 @@ import { FollowUpsBell } from './FollowUpsBell';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../navigation/AuthContext';
 import { P } from '../services/permissions';
+import { logScreenEvent, startTimer, finishTimer } from '../services/perfLogger';
 
 const circleButton =
   'w-10 h-10 rounded-full border border-neutral-200 bg-white items-center justify-center';
@@ -51,6 +52,13 @@ export function DashboardLayout({
   const { open } = useDrawer();
   const { can } = useAuth();
   const navigation = useNavigation();
+  const renderStartedAt = startTimer();
+
+  useEffect(() => {
+    logScreenEvent('layout mounted', title);
+  }, [title]);
+
+  finishTimer('layout render', renderStartedAt, title);
 
   return (
     <View className="flex-1 bg-light" style={{ paddingTop: insets.top }}>

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -33,6 +34,7 @@ import {
   type FollowUp,
 } from '../../services/followupsService';
 import { FollowUpCard } from '../followUps/FollowUpCard';
+import { IMAGE_BASE } from '../../services/utils';
 
 
 const heroShadow: StyleProp<ViewStyle> = {
@@ -99,17 +101,6 @@ function greetingFor(date: Date) {
   return 'Good evening';
 }
 
-function initialsFor(name?: string) {
-  return (
-    (name ?? '')
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map(part => part.charAt(0).toUpperCase())
-      .join('') || 'FE'
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /*  Static navigation launcher                                                 */
 /* -------------------------------------------------------------------------- */
@@ -163,6 +154,7 @@ export function HomeScreen() {
   const shortcuts = SHORTCUTS.filter(item => canAny(item.permissions));
 
   const now = new Date();
+
 
   const [stats, setStats] = useState<DashboardStats>();
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
@@ -252,12 +244,12 @@ export function HomeScreen() {
   const metrics: { label: string; value: number; dot: string }[] = [
     ...(canSeeFollowUps
       ? [
-          {
-            label: 'Follow-ups',
-            value: followUpCount,
-            dot: 'bg-secondary-500',
-          },
-        ]
+        {
+          label: 'Follow-ups',
+          value: followUpCount,
+          dot: 'bg-secondary-500',
+        },
+      ]
       : []),
     { label: 'Requests', value: stats?.requests ?? 0, dot: 'bg-primary-700' },
     {
@@ -294,11 +286,9 @@ export function HomeScreen() {
         <View className="p-5">
           <View className="flex-row items-center justify-end">
             <View
-              className="w-11 h-11 rounded-full items-center justify-center"
+              className="w-11 h-11 rounded-full items-center justify-center overflow-hidden"
               style={s.avatar}>
-              <Text className="font-lato-black text-sm text-white">
-                {initialsFor(user?.name)}
-              </Text>
+              <Image source={{ uri: `${IMAGE_BASE}/${user?.image}` }} style={{ width: "100%", height: "100%" }} />
             </View>
           </View>
 
@@ -361,32 +351,32 @@ export function HomeScreen() {
 
           <View className="flex-row flex-wrap justify-between mb-6">
             {shortcuts.map(shortcut => (
-          <TouchableOpacity
-            key={shortcut.screen}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate(shortcut.screen)}
-            className="w-[48%] bg-white rounded-2xl relative p-3 mb-3 min-h-[132px]"
-            style={cardShadow}
-            accessibilityRole="button"
-            accessibilityLabel={`${shortcut.title}. ${shortcut.subtitle}`}>
-            <View
-              className={`w-12 h-12 rounded-xl ${shortcut.disc} items-center justify-center mb-3`}>
-              {shortcut.icon}
-            </View>
+              <TouchableOpacity
+                key={shortcut.screen}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate(shortcut.screen)}
+                className="w-[48%] bg-white rounded-2xl relative p-3 mb-3 min-h-[132px]"
+                style={cardShadow}
+                accessibilityRole="button"
+                accessibilityLabel={`${shortcut.title}. ${shortcut.subtitle}`}>
+                <View
+                  className={`w-12 h-12 rounded-xl ${shortcut.disc} items-center justify-center mb-3`}>
+                  {shortcut.icon}
+                </View>
 
-            <View className='absolute bottom-5 left-4'>
-              <Text className="font-lato-bold text-[15px]  text-neutral-900 leading-4">
-                {shortcut.title}
-              </Text>
-              <Text className="font-lato text-[11px] text-neutral-600 leading-4 mt-1">
-                {shortcut.subtitle}
-              </Text>
-              <View className="flex-1" />
-            </View>
-            <View className="absolute bottom-5 right-4">
-              <ChevronRight size={14} color="#A3ABC4" />
-            </View>
-          </TouchableOpacity>
+                <View className='absolute bottom-5 left-4'>
+                  <Text className="font-lato-bold text-[15px]  text-neutral-900 leading-4">
+                    {shortcut.title}
+                  </Text>
+                  <Text className="font-lato text-[11px] text-neutral-600 leading-4 mt-1">
+                    {shortcut.subtitle}
+                  </Text>
+                  <View className="flex-1" />
+                </View>
+                <View className="absolute bottom-5 right-4">
+                  <ChevronRight size={14} color="#A3ABC4" />
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         </>

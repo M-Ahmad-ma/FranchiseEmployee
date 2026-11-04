@@ -28,6 +28,7 @@ import {
 const USER = {
   empId: 5,
   name: 'Sumeet Khan',
+  image: 'Sumeet.jpeg',
   email: 'employee@franchisepk.com',
   contact: '03171919170',
   position: 'Sales Manager',

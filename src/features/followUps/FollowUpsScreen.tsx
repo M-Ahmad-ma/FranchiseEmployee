@@ -264,9 +264,9 @@ export function FollowUpsScreen() {
         />
       ) : null}
 
-      {canScheduleFollowUp ? (
+      {canScheduleFollowUp && scheduling ? (
         <FollowUpSheet
-          visible={scheduling}
+          visible
           onClose={() => setScheduling(false)}
           onScheduled={load}
         />

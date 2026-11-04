@@ -8,17 +8,11 @@ import { useAuth } from '../../navigation/AuthContext';
 import type { PermissionKey } from '../../services/permissions';
 
 interface GateProps {
-  /** Access is allowed when any of these keys is present. */
   anyOf?: readonly PermissionKey[];
-  /** Access is allowed only when every key is present. */
   allOf?: readonly PermissionKey[];
   children: React.ReactNode;
 }
 
-/**
- * Keeps a forbidden screen from mounting at all, so it cannot fire its first
- * fetch and turn a hidden sidebar item into a `403` from a deep link.
- */
 export function PermissionGate({ anyOf, allOf, children }: GateProps) {
   const { canAny, canAll } = useAuth();
 

@@ -20,6 +20,7 @@ import { logMock } from './mockLogger';
 export interface AuthUser {
   empId: number;
   name: string;
+  image: string;
   email: string;
   contact: string;
   position: string;
@@ -87,6 +88,7 @@ function normalizeEmployee(row: Record<string, unknown>): Omit<
       'Franchise Employee',
     email: pickString(row, ['email', 'u_email']),
     contact: pickString(row, ['contact', 'u_contact']),
+    image: pickString(row, ['image']),
     position: pickString(row, ['position', 'a_position'], 'Franchise Employee'),
   };
 }
@@ -166,6 +168,9 @@ export async function signIn({
     email: email.trim(),
     password,
   });
+
+
+  console.log("login", data)
 
   if (!isRecord(data) || !isRecord(data.employee)) {
     throw new ApiError(0, 'Login response was malformed. Please try again.');

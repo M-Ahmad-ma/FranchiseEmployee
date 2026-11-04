@@ -34,6 +34,7 @@ const USER_KEY = '@franchisepk/session/user';
 export interface PersistedUser {
   empId: number;
   name: string;
+  image: string;
   email: string;
   contact: string;
   position: string;
@@ -121,6 +122,7 @@ export async function loadSession(): Promise<StoredSession | null> {
         user = {
           empId: Number(parsed.empId) || 0,
           name: parsed.name ?? 'Franchise Employee',
+          image: parsed.image ?? '',
           email: parsed.email ?? '',
           contact: parsed.contact ?? '',
           position: parsed.position ?? 'Franchise Employee',

@@ -23,6 +23,9 @@ import { TasksScreen } from '../features/tasks/TasksScreen';
 import { TaskDetailScreen } from '../features/tasks/TaskDetailScreen';
 import { MeetingsScreen } from '../features/meetings/MeetingsScreen';
 import { MeetingDetailScreen } from '../features/meetings/MeetingDetailScreen';
+import { UsersScreen } from '../features/users/UsersScreen';
+import { CompaniesScreen } from '../features/companies/CompaniesScreen';
+import { BrandsScreen } from '../features/brands/BrandsScreen';
 
 /**
  * The stack carries detail screens too, so it is typed from the full list —
@@ -31,7 +34,11 @@ import { MeetingDetailScreen } from '../features/meetings/MeetingDetailScreen';
  */
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const MODULE_ROUTES = Object.keys(MODULE_CONFIGS) as ModuleRoute[];
+const MODULE_ROUTES = (
+  Object.keys(MODULE_CONFIGS) as ModuleRoute[]
+).filter(
+  route => route !== 'Users' && route !== 'Companies' && route !== 'Brands',
+);
 
 function GuardedModuleScreen() {
   const route = useRoute();
@@ -71,6 +78,30 @@ function CompanyMediaSection() {
   return (
     <PermissionGate anyOf={[P.companyMediaView]}>
       <CompanyMediaScreen />
+    </PermissionGate>
+  );
+}
+
+function UsersSection() {
+  return (
+    <PermissionGate anyOf={[P.usersView]}>
+      <UsersScreen />
+    </PermissionGate>
+  );
+}
+
+function CompaniesSection() {
+  return (
+    <PermissionGate anyOf={[P.companiesView]}>
+      <CompaniesScreen />
+    </PermissionGate>
+  );
+}
+
+function BrandsSection() {
+  return (
+    <PermissionGate anyOf={[P.brandsView]}>
+      <BrandsScreen />
     </PermissionGate>
   );
 }
@@ -165,7 +196,9 @@ export function MainShell() {
         initialRouteName={initialScreen}
         screenOptions={{
           headerShown: false,
-          animation: 'slide_from_right',
+          // Sections are switched from the drawer, so a fast fade is less
+          // expensive and feels snappier than a full native slide.
+          animation: 'fade',
         }}
         screenListeners={screenListeners}>
         <Stack.Screen name="Home" component={HomeSection} />
@@ -174,6 +207,9 @@ export function MainShell() {
         <Stack.Screen name="CompanyMedia" component={CompanyMediaSection} />
         <Stack.Screen name="Tasks" component={TasksSection} />
         <Stack.Screen name="Meetings" component={MeetingsSection} />
+        <Stack.Screen name="Users" component={UsersSection} />
+        <Stack.Screen name="Companies" component={CompaniesSection} />
+        <Stack.Screen name="Brands" component={BrandsSection} />
 
         {MODULE_ROUTES.map(route => (
           <Stack.Screen

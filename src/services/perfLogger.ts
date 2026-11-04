@@ -7,7 +7,7 @@
  */
 
 /** Turn off when the timing investigation is finished. */
-export const LOG_PERF = true;
+export const LOG_PERF = false;
 
 let drawerTapAt: number | null = null;
 let drawerTapTarget: string | null = null;

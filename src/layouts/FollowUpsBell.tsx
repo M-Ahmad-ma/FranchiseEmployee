@@ -27,9 +27,16 @@ import { hasSession } from '../services/httpClient';
 import { FollowUpCard } from '../features/followUps/FollowUpCard';
 import { useAuth } from '../navigation/AuthContext';
 import { P } from '../services/permissions';
+import { logScreenEvent } from '../services/perfLogger';
 import type { RootStackParamList } from '../navigation/types';
 
-const REFRESH_INTERVAL_MS = 60_000;
+/**
+ * The bell is ambient information, not a live feed. It refreshes when a screen
+ * gains focus and when the user taps it. The old 60-second interval kept a
+ * request alive for every focused screen, competing with the screen's own data
+ * on the CI3 session lock.
+ */
+const INITIAL_DELAY_MS = 3_000;
 const DURATION = 260;
 /** Below 1:1 so the panel feels weighted rather than glued to the finger. */
 const SLIDE_FRICTION = 0.6;
@@ -110,6 +117,10 @@ export function FollowUpsBell() {
   const loadingRef = useRef(true);
   const progress = useRef(new Animated.Value(0)).current;
 
+  useEffect(() => {
+    logScreenEvent('bell mounted');
+  }, []);
+
   const poll = useCallback(async (force = false) => {
     if (!hasSession() && !loadingRef.current) {
       return;
@@ -144,15 +155,8 @@ export function FollowUpsBell() {
       // earlier can make the whole screen wait behind it.
       const initial = setTimeout(() => {
         void poll();
-      }, 700);
-      const id = setInterval(() => {
-        void poll();
-      }, REFRESH_INTERVAL_MS);
-      (id as { unref?: () => void }).unref?.();
-      return () => {
-        clearTimeout(initial);
-        clearInterval(id);
-      };
+      }, INITIAL_DELAY_MS);
+      return () => clearTimeout(initial);
     }, [poll]),
   );
 
@@ -281,8 +285,9 @@ export function FollowUpsBell() {
         )}
       </TouchableOpacity>
 
+      {mounted ? (
       <Modal
-        visible={mounted}
+        visible
         transparent
         animationType="none"
         onRequestClose={closeDrawer}
@@ -381,6 +386,7 @@ export function FollowUpsBell() {
           </Animated.View>
         </View>
       </Modal>
+      ) : null}
     </>
   );
 }

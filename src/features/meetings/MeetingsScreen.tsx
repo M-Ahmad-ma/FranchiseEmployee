@@ -19,6 +19,7 @@ import {
 } from '../../services/meetingService';
 import { describeApiError } from '../../services/httpClient';
 import { clearMeetingsCache } from '../../services/meetingService';
+import { MEETING_TYPE_LABELS } from '../../services/leadsFilterService';
 import type { RootStackParamList } from '../../navigation/types';
 
 type MeetingTab = 'active' | 'closed' | 'brand';
@@ -163,6 +164,8 @@ export function MeetingsScreen() {
         <View style={{ opacity: loading ? 0.55 : 1 }}>
           {rows.slice(0, visibleCount).map((meeting, index) => {
             const when = [meeting.date, meeting.time].filter(Boolean).join(' · ');
+            const kind = MEETING_TYPE_LABELS[meeting.type.trim()];
+            const done = meeting.status === '0';
             return (
               <TouchableOpacity
                 key={meeting.id || index}
@@ -186,6 +189,14 @@ export function MeetingsScreen() {
                     {canMyMeetings && meeting.id ? (
                       <ChevronRight size={15} color="#A3ABC4" />
                     ) : null}
+                  </View>
+
+                  <View className="flex-row flex-wrap gap-2 mt-3">
+                    <Badge
+                      label={done ? 'Past' : 'Upcoming'}
+                      tone={done ? 'neutral' : 'primary'}
+                    />
+                    {kind ? <Badge label={kind} tone="secondary" /> : null}
                   </View>
 
                   {meeting.venue || meeting.brand ? (
@@ -219,9 +230,9 @@ export function MeetingsScreen() {
         />
       ) : null}
 
-      {canCreate ? (
+      {canCreate && createOpen ? (
         <MeetingSheet
-          visible={createOpen}
+          visible
           onClose={() => setCreateOpen(false)}
           onCreated={async () => {
             clearMeetingsCache();

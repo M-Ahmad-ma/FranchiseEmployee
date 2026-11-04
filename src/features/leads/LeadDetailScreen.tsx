@@ -916,9 +916,9 @@ export function LeadDetailScreen() {
       </Card>
       ) : null}
 
-      {canCreateMeeting ? (
+      {canCreateMeeting && meetingOpen ? (
         <MeetingSheet
-          visible={meetingOpen}
+          visible
           leadId={leadId}
           lead={detail}
           companyId={e_co_id}
@@ -927,9 +927,9 @@ export function LeadDetailScreen() {
         />
       ) : null}
 
-      {canAddFollowUp && canEditLead ? (
+      {canAddFollowUp && canEditLead && scheduling ? (
         <FollowUpSheet
-          visible={scheduling}
+          visible
           initialLeadId={leadId}
           leadLabel={title}
           onClose={() => setScheduling(false)}
@@ -940,9 +940,9 @@ export function LeadDetailScreen() {
         />
       ) : null}
 
-      {canEditLead ? (
+      {canEditLead && uploadOpen ? (
         <LeadImageSheet
-          visible={uploadOpen}
+          visible
           leadId={leadId}
           onClose={() => setUploadOpen(false)}
           onUploaded={load}

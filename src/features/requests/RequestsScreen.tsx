@@ -187,18 +187,23 @@ export function RequestsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadDropdowns();
-      void loadMeetings();
+      // The leads request starts first. These two lookups are secondary, and on
+      // a CI3 session lock starting all four at once means the visible list
+      // waits behind the dropdown and meeting queries.
+      const timer = setTimeout(() => {
+        void loadDropdowns();
+        void loadMeetings();
+      }, 700);
+      return () => clearTimeout(timer);
     }, [loadDropdowns, loadMeetings]),
   );
 
   // Meetings arrive on their own schedule, independent of the filtered page, so
-  // the rows are re-joined once they land rather than waiting for a refetch.
+  // the rows are re-joined once they land rather than refetching the leads.
   useEffect(() => {
-    if (meetings.length > 0) {
-      void load();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setRows(current =>
+      current.length === 0 ? current : withMeetings(current, meetings),
+    );
   }, [meetings]);
 
   // Pipeline names arrive with the dropdowns, which are a separate request from

@@ -124,8 +124,26 @@ export function TasksScreen() {
                       {status === '1' ? 'Completed' : 'Open'}
                     </Text>
                   </View>
+                  <Badge
+                    label={status === '1' ? 'Done' : 'Open'}
+                    tone={status === '1' ? 'success' : 'primary'}
+                  />
                   <ChevronRight size={15} color="#A3ABC4" />
                 </View>
+
+                {row.details.length > 0 ? (
+                  <View className="flex-row flex-wrap gap-2 mt-3">
+                    {row.details.slice(0, 3).map((detail, index) => (
+                      <View
+                        key={`${detail.label}-${index}`}
+                        className="bg-neutral-200 rounded-full px-2.5 py-1">
+                        <Text className="font-lato text-[11px] text-neutral-700">
+                          {detail.label}: {detail.value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </Card>
             </TouchableOpacity>
           ))}

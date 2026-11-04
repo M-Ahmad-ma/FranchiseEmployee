@@ -21,7 +21,7 @@ import { USE_MOCK } from '../config';
  * and switch it back off afterwards. `enabled()` also checks `__DEV__`, so a
  * release build never prints this either way.
  */
-export const LOG_API = true;
+export const LOG_API = false;
 
 /** Print payload bodies. Off while diagnosing navigation timing. */
 export const LOG_API_BODIES = false;
@@ -70,9 +70,8 @@ function describePart(value: unknown) {
   const type = file.headers?.['Content-Type'] ?? '';
   const suffix = type ? ` (${type})` : '';
 
-  return `file:${file.name ?? 'unknown'}${
-    file.size ? ` ${Math.round(file.size / 1024)} KB` : ''
-  }${suffix}`;
+  return `file:${file.name ?? 'unknown'}${file.size ? ` ${Math.round(file.size / 1024)} KB` : ''
+    }${suffix}`;
 }
 
 /**
@@ -196,7 +195,7 @@ function writeBody(label: string, body: Body) {
  */
 export function beginRequest(method: string, url: string, body?: Body) {
   if (!enabled()) {
-    return { finish: () => {}, fail: () => {} };
+    return { finish: () => { }, fail: () => { } };
   }
 
   const startedAt = Date.now();

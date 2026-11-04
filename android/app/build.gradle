@@ -119,7 +119,7 @@ android {
          * Named "qa" rather than "testing" because Gradle reserves any build
          * type starting with "test" for its own source sets and rejects it.
          */
-        release {
+        qa {
             // debuggable is left off on purpose so the JS bundle is embedded,
             // which is what makes the APK work without a packager running.
             initWith debug

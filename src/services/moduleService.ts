@@ -17,6 +17,7 @@ export interface ModuleRow {
   id: string;
   title: string;
   subtitle?: string;
+  image?: string;
   raw: Record<string, unknown>;
   /**
    * Computed lazily. A 1,500-row list must not build card details and edit
@@ -280,7 +281,9 @@ function withValues(
   overrides: Record<string, string[]>,
 ): ModuleRow {
   const internal = row as ModuleRowInternal;
-  internal.valueKeys = { ...internal.valueKeys, ...overrides };
+  // Mutate the existing object: the `values` getter closes over this exact map,
+  // so replacing the property would leave the getter reading the empty original.
+  Object.assign(internal.valueKeys, overrides);
   return internal;
 }
 
@@ -580,6 +583,7 @@ export async function fetchUsers(force = false): Promise<ModuleRow[]> {
       contact: ['u_contact', 'contact'],
       company: ['u_company', 'company'],
       bio: ['u_bio', 'bio'],
+      image: ['u_image']
     }),
   );
 }
@@ -674,11 +678,10 @@ function addLeadValues(row: ModuleRow): ModuleRow {
   internal.title = [first, last].filter(Boolean).join(' ') || row.title;
   internal.subtitle =
     pickString(row.raw, ['co_name', 'e_emailaddress']) || row.subtitle;
-  internal.valueKeys = {
-    ...internal.valueKeys,
+  Object.assign(internal.valueKeys, {
     e_id: ['e_id', 'lead_id', 'id'],
     e_co_id: ['e_co_id', 'co_id'],
-  };
+  });
   return internal;
 }
 
