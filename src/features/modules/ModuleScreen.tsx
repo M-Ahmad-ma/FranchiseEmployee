@@ -357,6 +357,8 @@ export function ModuleScreen() {
   );
 
 
+
+
   return (
     <DashboardLayout
       title={config.label}
@@ -402,9 +404,8 @@ export function ModuleScreen() {
 
       <View className="flex-row items-center justify-between gap-3 mb-4">
         <Badge
-          label={`${filteredRows.length} record${
-            filteredRows.length === 1 ? '' : 's'
-          }`}
+          label={`${filteredRows.length} record${filteredRows.length === 1 ? '' : 's'
+            }`}
         />
         {canCreate ? (
           <Button
@@ -441,82 +442,82 @@ export function ModuleScreen() {
             const description = descriptionFor(row, presentation);
             const status = statusFor(row, presentation);
             return (
-            <Card key={row.id || row.title} className="bg-white rounded-2xl p-4 mb-3">
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => openRow(row)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${row.title}`}>
-                <View className="flex-row items-start gap-3">
-                  <View className="w-10 h-10 rounded-xl bg-primary-200 items-center justify-center">
-                    <Text className="font-lato-black text-xs text-primary-800">
-                      {initialsFor(row.title)}
-                    </Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="font-lato-bold text-base text-neutral-900">
-                      {row.title}
-                    </Text>
-                    {row.subtitle ? (
-                      <Text className="font-lato text-xs text-neutral-600 mt-1">
-                        {row.subtitle}
+              <Card key={row.id || row.title} className="bg-white rounded-2xl p-4 mb-3">
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => openRow(row)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${row.title}`}>
+                  <View className="flex-row items-start gap-3">
+                    <View className="w-10 h-10 rounded-xl bg-primary-200 items-center justify-center">
+                      <Text className="font-lato-black text-xs text-primary-800">
+                        {initialsFor(row.title)}
                       </Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-lato-bold text-base text-neutral-900">
+                        {row.title}
+                      </Text>
+                      {row.subtitle ? (
+                        <Text className="font-lato text-xs text-neutral-600 mt-1">
+                          {row.subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {status ? (
+                      <Badge
+                        label={status}
+                        tone={status.toLowerCase() === 'active' ? 'success' : 'neutral'}
+                      />
                     ) : null}
                   </View>
-                  {status ? (
-                    <Badge
-                      label={status}
-                      tone={status.toLowerCase() === 'active' ? 'success' : 'neutral'}
-                    />
-                  ) : null}
-                </View>
 
-                {summary.length > 0 ? (
-                  <View className="flex-row flex-wrap gap-2 mt-3">
-                    {summary.slice(0, 4).map((detail, index) => (
-                      <View
-                        key={`${detail.label}-${index}`}
-                        className="bg-primary-200 rounded-full px-2.5 py-1">
-                        <Text className="font-lato text-[11px] text-primary-700">
-                          {detail.label}: {detail.value}
-                        </Text>
-                      </View>
-                    ))}
+                  {summary.length > 0 ? (
+                    <View className="flex-row flex-wrap gap-2 mt-3">
+                      {summary.slice(0, 4).map((detail, index) => (
+                        <View
+                          key={`${detail.label}-${index}`}
+                          className="bg-primary-200 rounded-full px-2.5 py-1">
+                          <Text className="font-lato text-[11px] text-primary-700">
+                            {detail.label}: {detail.value}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {description ? (
+                    <Text
+                      className="font-lato text-xs text-neutral-600 mt-3 leading-5"
+                      numberOfLines={2}>
+                      {description}
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+
+                {(canEdit || canDelete) && row.id ? (
+                  <View className="flex-row justify-end gap-2 mt-3 pt-3 border-t border-neutral-200">
+                    {canEdit ? (
+                      <Button
+                        title="Edit"
+                        size="sm"
+                        variant="outlined"
+                        icon={<Pencil size={13} color="#5279AC" />}
+                        onPress={() => void openEdit(row)}
+                      />
+                    ) : null}
+                    {canDelete ? (
+                      <Button
+                        title="Delete"
+                        size="sm"
+                        variant="outlined"
+                        icon={<Trash2 size={13} color="#5279AC" />}
+                        onPress={() => confirmDelete(row)}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
-
-                {description ? (
-                  <Text
-                    className="font-lato text-xs text-neutral-600 mt-3 leading-5"
-                    numberOfLines={2}>
-                    {description}
-                  </Text>
-                ) : null}
-              </TouchableOpacity>
-
-              {(canEdit || canDelete) && row.id ? (
-                <View className="flex-row justify-end gap-2 mt-3 pt-3 border-t border-neutral-200">
-                  {canEdit ? (
-                    <Button
-                      title="Edit"
-                      size="sm"
-                      variant="outlined"
-                      icon={<Pencil size={13} color="#5279AC" />}
-                      onPress={() => void openEdit(row)}
-                    />
-                  ) : null}
-                  {canDelete ? (
-                    <Button
-                      title="Delete"
-                      size="sm"
-                      variant="outlined"
-                      icon={<Trash2 size={13} color="#5279AC" />}
-                      onPress={() => confirmDelete(row)}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
-            </Card>
+              </Card>
             );
           })}
         </View>

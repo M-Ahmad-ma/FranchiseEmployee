@@ -346,9 +346,9 @@ export const createProperty = (values: Record<string, string>) =>
 /* -------------------------------------------------------------------------- */
 
 const REPORT_SPEC: RowSpec = {
-  idKeys: ['report_id', 'r_id', 'id'],
-  titleKeys: ['title', 'report_title', 'name'],
-  subtitleKeys: ['description', 'report_description'],
+  idKeys: ['rep_id', 'report_id', 'r_id', 'id'],
+  titleKeys: ['emp_name', 'employee_name', 'title', 'name'],
+  subtitleKeys: ['rep_desc', 'description', 'rep_date'],
   excludeKeys: ['type'],
 };
 
@@ -396,9 +396,9 @@ export const deleteJob = (id: string) =>
 /* -------------------------------------------------------------------------- */
 
 const EVENT_SPEC: RowSpec = {
-  idKeys: ['event_id', 'e_id', 'id'],
-  titleKeys: ['title', 'event_title', 'name'],
-  subtitleKeys: ['venue', 'event_venue'],
+  idKeys: ['e_id', 'event_id', 'id'],
+  titleKeys: ['e_name', 'title', 'event_title', 'name'],
+  subtitleKeys: ['e_address', 'venue', 'event_venue'],
   excludeKeys: ['categories'],
 };
 
@@ -599,9 +599,9 @@ export const updateUser = (id: string, values: Record<string, string>) =>
 /* -------------------------------------------------------------------------- */
 
 const DOWNLOAD_SPEC: RowSpec = {
-  idKeys: ['download_id', 'd_id', 'id'],
-  titleKeys: ['title', 'name', 'file_name'],
-  subtitleKeys: ['category_name', 'description'],
+  idKeys: ['d_id', 'download_id', 'id'],
+  titleKeys: ['d_name', 'title', 'name', 'file_name'],
+  subtitleKeys: ['d_description', 'description'],
   excludeKeys: ['categories'],
 };
 
@@ -610,9 +610,9 @@ export async function fetchDownloads(force = false): Promise<ModuleRow[]> {
 }
 
 const FRANCHISE_SPEC: RowSpec = {
-  idKeys: ['franchise_id', 'f_id', 'id'],
-  titleKeys: ['name', 'title', 'franchise_name'],
-  subtitleKeys: ['city_name', 'category_name'],
+  idKeys: ['f_id', 'franchise_id', 'id'],
+  titleKeys: ['f_brandName', 'name', 'title', 'franchise_name'],
+  subtitleKeys: ['f_brand_location', 'city_name', 'category_name'],
   excludeKeys: ['categories'],
 };
 
@@ -621,9 +621,9 @@ export async function fetchFranchise(force = false): Promise<ModuleRow[]> {
 }
 
 const ADVERT_SPEC: RowSpec = {
-  idKeys: ['ads_id', 'ad_id', 'advert_id', 'id'],
-  titleKeys: ['title', 'name', 'ad_title'],
-  subtitleKeys: ['company_name', 'category_name'],
+  idKeys: ['a_id', 'ads_id', 'ad_id', 'advert_id', 'id'],
+  titleKeys: ['a_name', 'title', 'name', 'ad_title'],
+  subtitleKeys: ['a_description', 'company_name', 'category_name'],
   excludeKeys: ['categories'],
 };
 
@@ -632,9 +632,9 @@ export async function fetchAdvertisements(force = false): Promise<ModuleRow[]> {
 }
 
 const SUBSCRIBER_SPEC: RowSpec = {
-  idKeys: ['sub_id', 'subscriber_id', 'id'],
-  titleKeys: ['email', 'sub_email', 'name'],
-  subtitleKeys: ['name', 'created'],
+  idKeys: ['s_id', 'sub_id', 'subscriber_id', 'id'],
+  titleKeys: ['s_email', 'email', 'sub_email', 'name'],
+  subtitleKeys: ['s_time_date', 'created', 'name'],
   excludeKeys: ['categories'],
 };
 

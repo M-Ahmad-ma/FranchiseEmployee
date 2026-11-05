@@ -26,6 +26,15 @@ import { MeetingDetailScreen } from '../features/meetings/MeetingDetailScreen';
 import { UsersScreen } from '../features/users/UsersScreen';
 import { CompaniesScreen } from '../features/companies/CompaniesScreen';
 import { BrandsScreen } from '../features/brands/BrandsScreen';
+import { DownloadsScreen } from '../features/downloads/DownloadsScreen';
+import { EventsScreen } from '../features/events/EventsScreen';
+import { AdvertisementsScreen } from '../features/advertisements/AdvertisementsScreen';
+import { SubscribersScreen } from '../features/subscribers/SubscribersScreen';
+import { ShowsScreen } from '../features/shows/ShowsScreen';
+import { FranchiseScreen } from '../features/franchise/FranchiseScreen';
+import { ReportsScreen } from '../features/reports/ReportsScreen';
+import { InvestorRequestsScreen } from '../features/investorRequests/InvestorRequestsScreen';
+import { AssignedLeadsScreen } from '../features/assignedLeads/AssignedLeadsScreen';
 
 /**
  * The stack carries detail screens too, so it is typed from the full list —
@@ -37,7 +46,19 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const MODULE_ROUTES = (
   Object.keys(MODULE_CONFIGS) as ModuleRoute[]
 ).filter(
-  route => route !== 'Users' && route !== 'Companies' && route !== 'Brands',
+  route =>
+    route !== 'Users' &&
+    route !== 'Companies' &&
+    route !== 'Brands' &&
+    route !== 'Downloads' &&
+    route !== 'Events' &&
+    route !== 'Advertisements' &&
+    route !== 'Subscribers' &&
+    route !== 'Shows' &&
+    route !== 'Franchise' &&
+    route !== 'Reports' &&
+    route !== 'InvestorRequests' &&
+    route !== 'AssignedRequests',
 );
 
 function GuardedModuleScreen() {
@@ -102,6 +123,78 @@ function BrandsSection() {
   return (
     <PermissionGate anyOf={[P.brandsView]}>
       <BrandsScreen />
+    </PermissionGate>
+  );
+}
+
+function DownloadsSection() {
+  return (
+    <PermissionGate anyOf={[P.downloadsView]}>
+      <DownloadsScreen />
+    </PermissionGate>
+  );
+}
+
+function EventsSection() {
+  return (
+    <PermissionGate anyOf={[P.eventsView]}>
+      <EventsScreen />
+    </PermissionGate>
+  );
+}
+
+function AdvertisementsSection() {
+  return (
+    <PermissionGate anyOf={[P.adsView]}>
+      <AdvertisementsScreen />
+    </PermissionGate>
+  );
+}
+
+function SubscribersSection() {
+  return (
+    <PermissionGate anyOf={[P.subscribersView]}>
+      <SubscribersScreen />
+    </PermissionGate>
+  );
+}
+
+function ShowsSection() {
+  return (
+    <PermissionGate anyOf={[P.showsView]}>
+      <ShowsScreen />
+    </PermissionGate>
+  );
+}
+
+function FranchiseSection() {
+  return (
+    <PermissionGate anyOf={[P.resaleView]}>
+      <FranchiseScreen />
+    </PermissionGate>
+  );
+}
+
+function ReportsSection() {
+  return (
+    <PermissionGate anyOf={[P.reportsView]}>
+      <ReportsScreen />
+    </PermissionGate>
+  );
+}
+
+function InvestorRequestsSection() {
+  return (
+    <PermissionGate anyOf={[P.leadsList]}>
+      <InvestorRequestsScreen />
+    </PermissionGate>
+  );
+}
+
+function AssignedLeadsSection() {
+  return (
+    <PermissionGate anyOf={[P.leadsList]}>
+      <AssignedLeadsScreen />
     </PermissionGate>
   );
 }
@@ -210,6 +303,24 @@ export function MainShell() {
         <Stack.Screen name="Users" component={UsersSection} />
         <Stack.Screen name="Companies" component={CompaniesSection} />
         <Stack.Screen name="Brands" component={BrandsSection} />
+        <Stack.Screen name="Downloads" component={DownloadsSection} />
+        <Stack.Screen name="Events" component={EventsSection} />
+        <Stack.Screen
+          name="Advertisements"
+          component={AdvertisementsSection}
+        />
+        <Stack.Screen name="Subscribers" component={SubscribersSection} />
+        <Stack.Screen name="Shows" component={ShowsSection} />
+        <Stack.Screen name="Franchise" component={FranchiseSection} />
+        <Stack.Screen name="Reports" component={ReportsSection} />
+        <Stack.Screen
+          name="InvestorRequests"
+          component={InvestorRequestsSection}
+        />
+        <Stack.Screen
+          name="AssignedRequests"
+          component={AssignedLeadsSection}
+        />
 
         {MODULE_ROUTES.map(route => (
           <Stack.Screen

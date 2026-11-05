@@ -283,9 +283,14 @@ export const MODULE_CONFIGS: Record<ModuleRoute, ModuleConfig> = {
     load: fetchDownloads,
     emptyMessage: 'No downloads found.',
     presentation: {
-      summary: [{ label: 'Category', keys: ['category_name', 'category'] }],
-      descriptionKeys: ['description', 'desc'],
-      searchKeys: ['title', 'name', 'file_name', 'category_name'],
+      summary: [
+        { label: 'Status', keys: ['d_status', 'status'] },
+        { label: 'Added', keys: ['d_date_added', 'date_added'] },
+        { label: 'File', keys: ['d_file', 'file_name'] },
+      ],
+      descriptionKeys: ['d_description', 'description', 'desc'],
+      searchKeys: ['d_name', 'name', 'd_description', 'd_file', 'd_date_added'],
+      statusKeys: ['d_status', 'status'],
     },
   },
 
